@@ -1,0 +1,19 @@
+# depot-laadmonitor — scheduler units
+# Install:
+#   cp deploy/depotmon-*.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now depotmon-daily.timer depotmon-weekly.timer
+# Logs: journalctl -u depotmon-daily -n 100 --no-pager
+
+# ---------- daily ingest + diff ----------
+# /etc/systemd/system/depotmon-daily.service
+[Unit]
+Description=Depot laadmonitor — daily ingest, resolve, classify, diff
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/projects/depot-laadmonitor
+ExecStart=/usr/bin/docker compose run --rm worker depotmon daily
+TimeoutStartSec=3600
+Nice=10

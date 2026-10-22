@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: depotmon-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-depotmon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-depotmon}
+      POSTGRES_DB: ${POSTGRES_DB:-depotmon}
+    volumes:
+      - depotmon-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-depotmon} -d ${POSTGRES_DB:-depotmon}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${DB_PORT:-5433}:5432"
+
+  api:
+    build: .
+    container_name: depotmon-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-depotmon}:${POSTGRES_PASSWORD:-depotmon}@db:5432/${POSTGRES_DB:-depotmon}
+      RAW_DIR: /data/raw
+      REPORT_DIR: /data/reports
+      TZ: Europe/Amsterdam
+    volumes:
+      - depotmon-data:/data
+    ports:
+      - "${API_PORT:-8099}:8080"
+    command: ["depotmon", "serve", "--host", "0.0.0.0", "--port", "8080"]
+
+  worker:
+    build: .
+    container_name: depotmon-worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-depotmon}:${POSTGRES_PASSWORD:-depotmon}@db:5432/${POSTGRES_DB:-depotmon}
+      RAW_DIR: /data/raw
+      REPORT_DIR: /data/reports
+      PERMIT_LOOKBACK_DAYS: ${PERMIT_LOOKBACK_DAYS:-10}
+      RDW_MONTHS: ${RDW_MONTHS:-18}
+      LLM_CLASSIFY: ${LLM_CLASSIFY:-false}
+      OCM_API_KEY: ${OCM_API_KEY:-}
+      TZ: Europe/Amsterdam
+    volumes:
+      - depotmon-data:/data
+    profiles: ["jobs"]
+
+volumes:
+  depotmon-pgdata:
+  depotmon-data:

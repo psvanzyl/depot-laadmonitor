@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Depot-laadmonitor NL</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --muted: #8b949e; --accent: #3fb950; --warn: #d29922; --bad: #f85149; --info: #58a6ff;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#ffffff; --panel:#f6f8fa; --border:#d0d7de; --text:#1f2328;
+            --muted:#59636e; --accent:#1a7f37; --warn:#9a6700; --bad:#cf222e; --info:#0969da; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:12px 18px;
+           border-bottom:1px solid var(--border); background:var(--panel); flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:-0.01em; }
+  .sub { color:var(--muted); font-size:12px; }
+  .stats { display:flex; gap:18px; margin-left:auto; flex-wrap:wrap; }
+  .stat { display:flex; flex-direction:column; min-width:74px; }
+  .stat b { font-size:18px; font-variant-numeric: tabular-nums; }
+  .stat span { color:var(--muted); font-size:11px; text-transform:uppercase;
+               letter-spacing:.04em; }
+  main { display:grid; grid-template-columns: 1fr 380px; height: calc(100vh - 58px); }
+  #map { height:100%; }
+  aside { border-left:1px solid var(--border); background:var(--panel); display:flex;
+          flex-direction:column; overflow:hidden; }
+  .filters { padding:12px; display:grid; gap:8px; border-bottom:1px solid var(--border); }
+  .filters input, .filters select { width:100%; padding:6px 8px; border-radius:6px;
+     border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; }
+  .filters .row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  #list { overflow:auto; padding:8px; }
+  .card { border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px;
+          background:var(--bg); cursor:pointer; }
+  .card:hover { border-color: var(--info); }
+  .card h3 { margin:0 0 4px; font-size:13px; font-weight:600; }
+  .card p { margin:0; color:var(--muted); font-size:12px; }
+  .badge { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px;
+           border:1px solid var(--border); margin-right:6px; }
+  .s-operational { color:var(--accent); border-color:var(--accent); }
+  .s-permit_granted { color:var(--info); border-color:var(--info); }
+  .s-permit_requested { color:var(--warn); border-color:var(--warn); }
+  .s-under_construction { color:var(--warn); border-color:var(--warn); }
+  .s-grid_connection_signalled { color:var(--warn); border-color:var(--warn); }
+  .s-rumoured { color:var(--muted); }
+  .s-unknown { color:var(--muted); }
+  .legend { position:absolute; left:12px; bottom:24px; background:var(--panel);
+            border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12px; }
+  .legend div { display:flex; align-items:center; gap:6px; margin:2px 0; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; height:auto; }
+    aside { border-left:none; border-top:1px solid var(--border); max-height:45vh; }
+    .stats { margin-left:0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Depot-laadmonitor NL</h1>
+    <div class="sub">Laadinfrastructuur voor zware vrachtwagens (N2/N3) · diepe depots, niet-openbaar</div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="k-sites">–</b><span>locaties</span></div>
+    <div class="stat"><b id="k-op">–</b><span>operationeel</span></div>
+    <div class="stat"><b id="k-ann">–</b><span>MW aangekondigd</span></div>
+    <div class="stat"><b id="k-opmw">–</b><span>MW operationeel</span></div>
+  </div>
+</header>
+<main>
+  <div id="map">
+    <div class="legend">
+      <div><span class="dot" style="background:#3fb950"></span>operationeel</div>
+      <div><span class="dot" style="background:#d29922"></span>in aanbouw / netaansluiting</div>
+      <div><span class="dot" style="background:#58a6ff"></span>vergunning verleend</div>
+      <div><span class="dot" style="background:#8b949e"></span>aangevraagd / gerucht</div>
+    </div>
+  </div>
+  <aside>
+    <div class="filters">
+      <input id="q" placeholder="Zoek naam, operator, gemeente…" />
+      <div class="row">
+        <select id="status">
+          <option value="">Alle statussen</option>
+          <option value="operational">operationeel</option>
+          <option value="under_construction">in aanbouw</option>
+          <option value="grid_connection_signalled">netaansluiting</option>
+          <option value="permit_granted">vergunning verleend</option>
+          <option value="permit_requested">vergunning aangevraagd</option>
+          <option value="rumoured">gerucht</option>
+        </select>
+        <select id="power">
+          <option value="0">Alle vermogens</option>
+          <option value="150">≥ 150 kW</option>
+          <option value="350">≥ 350 kW</option>
+          <option value="1000">≥ 1 MW</option>
+        </select>
+      </div>
+    </div>
+    <div id="list"></div>
+  </aside>
+</main>
+<script>
+const COLORS = {
+  operational: "#3fb950",
+  under_construction: "#d29922",
+  grid_connection_signalled: "#d29922",
+  permit_granted: "#58a6ff",
+  permit_requested: "#8b949e",
+  rumoured: "#8b949e",
+  unknown: "#6e7681",
+};
+const map = new maplibregl.Map({
+  container: "map",
+  style: {
+    version: 8,
+    sources: {
+      brt: {
+        type: "raster",
+        tiles: ["https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/standaard/EPSG:3857/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "© Kadaster / PDOK · BRT achtergrondkaart · CC-BY",
+      },
+    },
+    layers: [{ id: "brt", type: "raster", source: "brt" }],
+  },
+  center: [5.3, 52.2],
+  zoom: 7.2,
+  attributionControl: { compact: true },
+});
+map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+let allSites = [];
+let markers = [];
+
+function powerOf(p) {
+  return Math.max(p.power_kw_announced || 0, p.power_kw_operational || 0);
+}
+function fmtPower(kw) {
+  if (!kw) return "–";
+  return kw >= 1000 ? (kw / 1000).toFixed(1) + " MW" : Math.round(kw) + " kW";
+}
+
+function render(filtered) {
+  markers.forEach(m => m.remove());
+  markers = filtered.map(s => {
+    const el = document.createElement("div");
+    el.className = "dot";
+    el.style.cssText = `width:14px;height:14px;border-radius:50%;background:${COLORS[s.status] || "#6e7681"};box-shadow:0 0 0 2px rgba(0,0,0,.35)`;
+    const popup = new maplibregl.Popup({ offset: 12 }).setHTML(
+      `<strong>${s.name || "–"}</strong><br>${s.operator || ""}<br>` +
+      `${s.address || ""} ${s.city || ""}<br>` +
+      `status: <b>${s.status}</b> · ${fmtPower(powerOf(s))}<br>` +
+      `zekerheid: ${(s.confidence * 100).toFixed(0)}%`
+    );
+    return new maplibregl.Marker({ element: el }).setLngLat([s.lon, s.lat]).setPopup(popup).addTo(map);
+  });
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  filtered.slice(0, 400).forEach(s => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML =
+      `<h3>${s.name || "–"}</h3>` +
+      `<p><span class="badge s-${s.status}">${s.status}</span>` +
+      `${fmtPower(powerOf(s))} · ${s.province || "–"}</p>` +
+      `<p>${s.operator || ""} ${s.address ? "· " + s.address : ""}</p>`;
+    card.onclick = () => {
+      map.flyTo({ center: [s.lon, s.lat], zoom: 14 });
+      new maplibregl.Popup().setLngLat([s.lon, s.lat])
+        .setHTML(`<strong>${s.name}</strong><br>${s.status} · ${fmtPower(powerOf(s))}`)
+        .addTo(map);
+    };
+    list.appendChild(card);
+  });
+}
+
+function apply() {
+  const q = document.getElementById("q").value.toLowerCase();
+  const st = document.getElementById("status").value;
+  const mp = parseFloat(document.getElementById("power").value);
+  const filtered = allSites.filter(s => {
+    if (st && s.status !== st) return false;
+    if (powerOf(s) < mp) return false;
+    if (q) {
+      const hay = [s.name, s.operator, s.city, s.municipality, s.province, s.address]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  render(filtered);
+}
+
+async function boot() {
+  const [sitesRes, statsRes] = await Promise.all([
+    fetch("/sites?limit=5000&format=geojson"),
+    fetch("/stats"),
+  ]);
+  const geo = await sitesRes.json();
+  allSites = geo.features.map(f => ({ ...f.properties, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
+  const stats = await statsRes.json();
+  const op = stats.by_status.find(x => x.status === "operational");
+  const ann = stats.by_status.reduce((a, x) => a + (x.announced_kw || 0), 0);
+  const opkw = stats.by_status.reduce((a, x) => a + (x.operational_kw || 0), 0);
+  document.getElementById("k-sites").textContent = allSites.length;
+  document.getElementById("k-op").textContent = op ? op.sites : 0;
+  document.getElementById("k-ann").textContent = (ann / 1000).toFixed(1);
+  document.getElementById("k-opmw").textContent = (opkw / 1000).toFixed(1);
+  render(allSites);
+  if (allSites.length) {
+    const lons = allSites.map(s => s.lon), lats = allSites.map(s => s.lat);
+    map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+                  { padding: 60, maxZoom: 11 });
+  }
+}
+document.getElementById("q").addEventListener("input", apply);
+document.getElementById("status").addEventListener("change", apply);
+document.getElementById("power").addEventListener("change", apply);
+map.on("load", boot);
+</script>
+</body>
+</html>

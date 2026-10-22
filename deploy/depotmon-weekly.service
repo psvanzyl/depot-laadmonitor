@@ -1,0 +1,11 @@
+[Unit]
+Description=Depot laadmonitor — weekly report
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/projects/depot-laadmonitor
+ExecStart=/usr/bin/docker compose run --rm worker depotmon weekly
+TimeoutStartSec=1800
+Nice=10

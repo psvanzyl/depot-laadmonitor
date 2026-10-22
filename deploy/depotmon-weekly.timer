@@ -1,0 +1,9 @@
+[Unit]
+Description=Depot laadmonitor — weekly report trigger
+
+[Timer]
+OnCalendar=Mon *-*-* 06:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

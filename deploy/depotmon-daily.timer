@@ -1,0 +1,10 @@
+[Unit]
+Description=Depot laadmonitor — daily ingest trigger
+
+[Timer]
+OnCalendar=*-*-* 05:20:00
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+.git
+.venv
+__pycache__
+*.pyc
+data
+.env
+.pytest_cache
+.ruff_cache
+validation/sample_30.csv
+validation/score.json

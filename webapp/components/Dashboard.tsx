@@ -15,6 +15,20 @@ import {
   type Tier,
 } from "@/lib/types";
 
+
+// Foreign rows carry a country, not a Dutch province. Used for the region table.
+const COUNTRY_NAME: Record<string, string> = {
+  NL: "Nederland",
+  DE: "Duitsland",
+  CH: "Zwitserland",
+  ES: "Spanje",
+  IT: "Italië",
+  AT: "Oostenrijk",
+  BE: "België",
+  LU: "Luxemburg",
+  LI: "Liechtenstein",
+};
+
 const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
   loading: () => (
@@ -96,7 +110,12 @@ export default function Dashboard() {
   const provinces = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of visible) {
-      const p = f.properties.province || "Onbekend";
+      // Foreign rows have no Dutch province. Bucketing them all as "Onbekend"
+      // hid 300+ sites in one meaningless bar, so fall back to the country.
+      const cc = f.properties.country;
+      const p =
+        f.properties.province ||
+        (cc && cc !== "NL" ? COUNTRY_NAME[cc] ?? cc : "Onbekend");
       c[p] = (c[p] ?? 0) + 1;
     }
     return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -290,7 +309,7 @@ export default function Dashboard() {
           {provinces.length > 0 && (
             <section className="bg-white rounded-xl border border-slate-200 p-4">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                Per provincie
+                Per provincie / land
               </h2>
               <table className="w-full text-xs">
                 <tbody>

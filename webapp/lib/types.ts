@@ -12,6 +12,7 @@ export interface DepotProperties {
   city: string;
   postcode: string;
   province: string;
+  country?: string;
   tier: Tier;
   score: number;
   /** null when no source mentioned a power figure — never guessed. */
@@ -58,7 +59,7 @@ export const TIER_LABEL: Record<Tier, string> = {
 };
 
 export const TIER_HINT: Record<Tier, string> = {
-  A: "Vergunning of publicatie noemt bedrijf én volledig adres.",
+  A: "Operator, vergunning of publicatie noemt bedrijf én volledig adres.",
   B: "Bewijs noemt het bedrijf en de plaats, adres ontbreekt.",
   C: "Signaal zonder locatiebevestiging — handmatig verifiëren.",
 };

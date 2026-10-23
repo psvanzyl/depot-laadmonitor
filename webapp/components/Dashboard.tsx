@@ -109,7 +109,7 @@ export default function Dashboard() {
     setAccess((cur) => (cur.includes(a) ? cur.filter((x) => x !== a) : [...cur, a]));
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="min-h-screen lg:h-screen flex flex-col">
       <header className="bg-white border-b border-slate-200 shadow-sm z-20">
         <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           <h1 className="text-lg font-bold text-slate-900 whitespace-nowrap">
@@ -126,8 +126,8 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        <aside className="lg:w-[380px] lg:shrink-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+        <aside className="lg:w-[380px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-1">
             <div className="text-4xl font-bold text-amber-700 tabular-nums">
               {depots ? nf.format(visible.length) : "…"}
@@ -324,7 +324,7 @@ export default function Dashboard() {
           </p>
         </aside>
 
-        <main className="relative flex-1 min-h-[420px]">
+        <main className="relative h-[55vh] lg:h-auto flex-1 min-h-[420px]">
           <MapView
             depots={depots}
             companies={companies}

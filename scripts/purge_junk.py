@@ -16,6 +16,12 @@ LOGISTICS = re.compile(
     r"opslag|warehouse|koerier|vervoerder|expeditie|wagenpark|heavy.?duty|zero.?emission",
     re.I,
 )
+# A verkeersbesluit reserving street parking bays for EV charging is a PUBLIC
+# charge point, not a private depot. Almere alone files ~115 of these from one
+# template, which is why the map looked like Almere was the depot capital.
+PUBLIC_BAY = re.compile(r"parkeervak|parkeerplaats|parkeerstrook", re.I)
+EV_CHARGING = re.compile(r"laden van elektrische voertuigen|laadpunt|oplaadpunt", re.I)
+
 COMPANY_FORM = re.compile(r"\b(B\.?V\.?|N\.?V\.?|Logistics|Logistiek|Transport|Vervoer|Groep|Group)\b")
 
 
@@ -31,6 +37,14 @@ def main() -> int:
                     bad.append(r["signal_id"])
                     continue
                 if r["city"] and not plausible_city(r["city"]):
+                    bad.append(r["signal_id"])
+                    continue
+                text_all = (r["text_excerpt"] or "") + " " + (r["operator"] or "")
+                if (
+                    r["kind"] == "permit"
+                    and PUBLIC_BAY.search(text_all)
+                    and EV_CHARGING.search(text_all)
+                ):
                     bad.append(r["signal_id"])
                     continue
                 if r["kind"] == "news":

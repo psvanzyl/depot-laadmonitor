@@ -146,3 +146,49 @@ the username (`depotmon`) — the docker-compose default. Reachable from the who
 LAN. Not changed here because rotating it while the daily job was mid-run would
 have broken the ingest; recommended fix is an `.env` with a real password plus
 binding the port to `127.0.0.1:5433`.
+
+## Almere: 113 "depot chargers" that were never depots (resolved 2026-10-23)
+
+The Almere blob was an artefact, and it was two bugs stacked.
+
+**What was in the data.** 113 of 204 scored rows sat in Almere, all tier C, all one
+source. Every one was the same document from the gemeenteblad:
+
+  "Aanwijzen en inrichten van twee parkeervakken ten behoeve van het laden van
+   elektrische voertuigen"
+
+That is a verkeersbesluit reserving TWO PUBLIC street parking bays for an EV charge
+point. Not a depot, not private, no logistics company involved. Almere simply files
+one of these per street location (115 in the current lookback window), which is why
+the volume concentrated there: Rotterdam and Amsterdam file the same decisions in
+different document types, so they never entered this way.
+
+**Why the guards missed it.**
+1. Category error: the text contains "laden" and an address, and the logistics
+   vocabulary check accepts charging words (laadplein, laadpunt). A public street
+   charge point therefore passed as depot evidence.
+2. Dedup failure, and this is the real problem: the extracted "operator" was the
+   ADDRESS - "Laadplein Heerlenstraat 10 1324MG Almere". company_key is derived
+   from the operator, so all 113 addresses became 113 distinct "companies". Nothing
+   clustered, nothing deduplicated, and each one got its own map row.
+
+**Fix (both in the purge gate, auditable and reversible).**
+- `purge_junk.py`: reject permits whose text matches parking-bay language
+  (parkeervak | parkeerplaats | parkeerstrook) together with EV-charging language.
+- `news_extract.plausible_operator`: reject any name containing a Dutch postcode
+  (\\d{4}\\s?[A-Z]{2}). An address is not a company. This one is the general fix -
+  it also protects against future sources that put an address in the name field.
+
+**Result.** 117 signals purged; Almere went 113 -> 0 and Flevoland disappeared from
+the province breakdown entirely. Totals: 204 -> 89 sites (A1/B26/C62), 16,770 kW at
+known-power locations. Province split is now Zuid-Holland 18, Noord-Holland 16,
+Noord-Brabant 15, Gelderland 12, Overijssel 8, Utrecht 6, Limburg 6, Fryslan 3,
+Groningen 3, Zeeland 2 - which is where Dutch logistics actually is.
+
+**Check before trusting any future spike.** A single city dominating the map is
+almost always one publisher pushing one document template. Group by operator and
+look for postcodes in the operator field first; that found this in one query.
+
+Remaining known noise: "Mercedes (Munchen)", "Volvo (Goteborg)", "Brakes (?)" -
+foreign or fragmentary, they export without coordinates so they do not plot, but
+they still inflate the count and should be dropped by a foreign-city check.

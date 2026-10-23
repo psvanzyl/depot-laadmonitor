@@ -95,6 +95,7 @@ _ALLOWED_LOWER = {
 }
 
 
+POSTCODE_IN_NAME = re.compile(r"\b\d{4}\s?[A-Z]{2}\b")
 REGION_PAREN = re.compile(
     r"\((?:[^)]*(?:noord|zuid|oost|west|amerika|europa|afrika|azi[ëe]|midden-oosten)[^)]*)\)",
     re.IGNORECASE,
@@ -168,6 +169,11 @@ def plausible_operator(name: str | None) -> bool:
         return False
     # "Na Total (Noord-Amerika)" and friends: a headline tail about a region,
     # not a company with a yard in the Netherlands.
+    # An address is not a company. Almere permit templates yield operators like
+    # "Laadplein Heerlenstraat 10 1324MG Almere"; each becomes its own company_key,
+    # so these phantom sites never cluster or deduplicate.
+    if POSTCODE_IN_NAME.search(s):
+        return False
     if REGION_PAREN.search(s):
         return False
     words = s.split()

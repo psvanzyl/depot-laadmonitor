@@ -240,3 +240,61 @@ timeout, or moving OSM to the weekly run.
 Tests: 48 passing, including new `tests/test_regressions.py` pinning the Decimal
 serialisation and the operator guards (address-as-operator, job titles, generic
 place nouns).
+
+## Overpass/OSM: five defects, one of them years old (resolved 2026-10-23)
+
+The daily OSM ingest had been failing for so long that "source_failure" was
+background noise. Starting the unit by hand exposed a chain, and the last link
+explains everything:
+
+1. **`overpass-api.de/robots.txt` serves `Disallow: /api/`.** The polite fetcher
+   therefore ALWAYS refused the one mirror that works. Every previous run fell
+   through to `overpass.osm.ch` (answers HTTP 200 with an empty body in 0.2s) or
+   `overpass.kumi.systems` (dead). This is why OSM ingest "kept failing" no matter
+   which mirror was added. Fixed via the existing audited `robots_exempt`
+   mechanism (host -> written reason, logged and stored per run), on the grounds
+   that /api/interpreter is a documented query API, not crawlable content.
+2. **`area["ISO3166-1"="NL"]` instead of a bbox** — an area lookup costs the
+   server far more; replaced with `[bbox:50.6,3.2,53.6,7.3]`.
+3. **`http_timeout=90` with `max_retries=3` x 3 mirrors** = up to nine doomed
+   attempts. A national query measures 67s (api.de) to 158s (private.coffee).
+   Now `OVERPASS_TIMEOUT=240`, ONE attempt per mirror, rotation IS the retry.
+4. **HTTP 200 with an empty body counted as success** — would have silently wiped
+   every OSM signal. Now an empty element list raises and the next mirror is tried.
+5. **The query was too broad.** It asks for access=private|customers|no|permit,
+   and OSM applies those tags to car chargers constantly: 1,702 of 3,169 signals
+   (54%) were 11-22 kW nodes at hotels, IKEA and town halls. Guard:
+   `_truck_relevant()` keeps a point only with an hgv tag, an MCS connector, or
+   >= 50 kW (`MIN_TRUCK_KW`). Plus `classify/premises.py` caps OSM-only,
+   non-HGV evidence at tier C — one crowd-sourced node is a lead, not
+   "waarschijnlijk".
+
+### Exporter was discarding real locations
+`export_webapp_data.py` bailed on `if not (postcode or plausible_city(city))`
+BEFORE consulting signal geometry. That was written for permits and news, which
+carry text. OSM is the opposite: exact coordinates, no address. 520 real locations
+were binned by that guard. Now postcode/city decide only whether the row is
+GEOCODABLE; signal geometry is tried first and a row is dropped only if nothing
+yields a point. Also: the operator+city signal lookup matched `ILIKE '%%'` when
+either field was empty and returned an arbitrary signal from anywhere in the
+country — it now requires both.
+
+### Result
+Signals: osm 219 (truck-plausible only), ndw 896, news 444, permits 75.
+Map: 154 sites (A1/B34/C119), 61 HGV-rated, 100 unplaced (the residual foreign
+junk: munchen, gaggenau, empties). Daily cycle: `pipeline exit: 0`, zero alerts,
+`ExecMainStatus=0` — the first clean run.
+
+### SQL trap worth remembering
+The first prune deleted only 1,702 of 2,950 intended rows. `connector_types &&
+array[...]` is NULL when the column is NULL, `NOT NULL` is NULL, so a WHERE built
+on that comparison silently matches nothing. `coalesce(..., false)` fixed it and
+the second pass removed the remaining 1,248. Always coalesce array overlaps in a
+negative predicate.
+
+### Disk: CT141 hit 100%
+NDW ingest failed with `could not extend file: No space left on device` at 188MB
+free. Reclaimed 10.8GB with `docker builder prune -af` + `docker image prune -a`
+(8.7GB of unused images, 2GB dead build cache) -> 73%, 11GB free. Postgres was
+unharmed and NDW ingested immediately after. 40G is too small for this host's
+toolchains; watch it.

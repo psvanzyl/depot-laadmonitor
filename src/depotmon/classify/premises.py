@@ -171,6 +171,16 @@ def score_evidence(items: list[dict]) -> dict:
             "no_company_name: geen bedrijfsnaam in het bewijs — alleen locatie bekend"
         )
 
+    # A single crowd-sourced OSM node is a lead to verify, not a probability.
+    # OSM records private car chargers with the same tags, so unless the evidence
+    # is explicitly truck-rated it must not reach tier B.
+    sources = {it.get("source") for it in items}
+    if sources == {"osm"} and not any(it.get("hgv_capable") for it in items):
+        score = min(score, 0.55)
+        reasons.append(
+            "osm_only: alleen OSM-bewijs zonder HGV/MCS — lead, geen bevestiging"
+        )
+
     if score >= TIER_A and located:
         tier = "A"
     elif score >= TIER_B:

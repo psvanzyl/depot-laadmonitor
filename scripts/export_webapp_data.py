@@ -57,14 +57,13 @@ def main() -> None:
         # A depot must be drawn at the company's yard when we know it. Only when
         # no company match exists do we fall back to postcode/city, and then the
         # feature says so explicitly (locationBasis='city').
-        pass
-        # A row with neither a postcode nor a plausible Dutch place name cannot be
-        # placed on a map of the Netherlands ("Düsseldorf", "").
-        if not (row["postcode"] or plausible_city(row["city"])):
-            no_geo.append(row["place_key"])
-            continue
         urls = evidence_urls(row["evidence"])
         lon, lat = row["lon"], row["lat"]
+        # Whether this row carries enough TEXT to geocode. It is not a reason to
+        # discard it: an OSM charge point has exact geometry and no address at all,
+        # and a guard here used to bin 500+ real locations before their signal
+        # geometry was ever consulted. Decide with the coordinates, not the text.
+        geocodable = bool(row["postcode"] or plausible_city(row["city"]))
         province = None
         precision = "premises" if (lon is not None and lat is not None) else None
         if lon is not None and lat is not None:
@@ -96,18 +95,20 @@ def main() -> None:
                     # if the signal carried a postcode/street, never a bare city
                     lon, lat, province = hit["lon"], hit["lat"], hit["province"]
                     precision = "signal"
-            if lat is None:
+            # Both fields must be present: ILIKE '%%' on an empty operator or city
+            # returns an arbitrary signal from anywhere in the country.
+            if lat is None and row["operator"] and row["city"]:
                 cur.execute(
                     """SELECT lon, lat, province FROM signals
                         WHERE operator ILIKE %s AND city ILIKE %s AND geom IS NOT NULL
                         ORDER BY last_seen DESC LIMIT 1""",
-                    (row["operator"] or "", row["city"] or ""),
+                    (row["operator"], row["city"]),
                 )
                 hit = cur.fetchone()
                 if hit and hit["lat"] is not None:
                     lon, lat, province = hit["lon"], hit["lat"], hit["province"]
                     precision = "signal"
-        if lat is None:
+        if lat is None and geocodable:
             query = build_query(row["address"], row["postcode"], row["city"])
             res = geocode(fetcher, store, query, row["postcode"]) if query else None
             if res:

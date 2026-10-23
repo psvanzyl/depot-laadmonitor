@@ -20,4 +20,5 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 EXPOSE 3000
-CMD ["npm", "start", "-p", "3000"]
+# npm needs  before flags, otherwise it appends them to the script as a path.
+CMD ["npm", "start", "--", "-p", "3000"]

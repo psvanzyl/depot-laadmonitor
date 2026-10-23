@@ -9,9 +9,12 @@ import { TIER_COLOR, type AccessClass, type Depots, type Tier } from "@/lib/type
 // findings are drawn on top of it, at the company's own yard where we can prove it.
 type Companies = { type: "FeatureCollection"; features: unknown[] } | null;
 
+// The Depotcharge feed is multi-country (DE/CH/ES/IT/AT/LU/LI). The first view
+// has to contain those sites or they are silently invisible, so the box covers
+// NL plus its neighbours instead of NL alone.
 const NL_BOUNDS: [[number, number], [number, number]] = [
-  [3.2, 50.7],
-  [7.3, 53.6],
+  [-3.0, 44.0],
+  [15.0, 55.0],
 ];
 
 // Key-free raster basemap. CARTO started demanding an API key and served
@@ -110,6 +113,12 @@ export default function MapView({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
+    // exposed for diagnostics: the basemap can silently fail to paint
+    if (typeof window !== "undefined") (window as any).__depotMap = map;
+    (window as any).__mapErrors = [];
+    map.on("error", (e: any) => {
+      (window as any).__mapErrors.push(String((e && e.error && e.error.message) || e));
+    });
 
     // MapLibre measures the container once, at construction. When the sidebar
     // grows (extra filter rows), the map keeps a stale canvas size and paints

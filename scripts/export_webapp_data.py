@@ -106,6 +106,7 @@ def main() -> None:
         # geometry was ever consulted. Decide with the coordinates, not the text.
         geocodable = bool(row["postcode"] or plausible_city(row["city"]))
         province = None
+        country = ""
         precision = "premises" if (lon is not None and lat is not None) else None
         if lon is not None and lat is not None:
             # Snapped to the company's own yard by resolve/snap.py — the only basis
@@ -114,7 +115,8 @@ def main() -> None:
             with store.conn.cursor() as cur:
                 if urls:
                     cur.execute(
-                        """SELECT province FROM signals
+                        """SELECT province, raw_state->>'country' AS country
+                            FROM signals
                             WHERE doc_url = ANY(%s) AND geom IS NOT NULL
                             ORDER BY last_seen DESC LIMIT 1""",
                         (urls,),
@@ -122,6 +124,11 @@ def main() -> None:
                     hit = cur.fetchone()
                     if hit:
                         province = hit["province"]
+                        # doc_url is shared by the whole Depotcharge fleet, so the
+                        # country behind it is arbitrary. Only keep it when the
+                        # province proves the feature is Dutch; everything else is
+                        # labelled by proximity after the list is built.
+                        country = (hit.get("country") or "") if province else ""
         with store.conn.cursor() as cur:
             if lat is None and urls:
                 cur.execute(
@@ -173,6 +180,9 @@ def main() -> None:
                     "city": row["city"] or "",
                     "postcode": row["postcode"] or "",
                     "province": province or "",
+                    # ISO-2. The Depotcharge feed is multi-country now, so a
+                    # feature outside NL must not look like a broken Dutch row.
+                    "country": country or ("NL" if province else ""),
                     "tier": row["tier"],
                     "score": round(float(row["score"]), 3),
                     "powerKw": float(row["power_kw"]) if row["power_kw"] else None,
@@ -196,6 +206,31 @@ def main() -> None:
                 },
             }
         )
+
+    # Label foreign features. Every Depotcharge signal shares one doc_url (the
+    # fleet URL), so the per-feature country join returns an arbitrary row. Use
+    # the nearest Depotcharge point instead, and only outside the NL box, so a
+    # Dutch row with an unknown province is never relabelled as German.
+    with store.conn.cursor() as cur:
+        cur.execute(
+            """SELECT lon, lat, raw_state->>'country' AS c
+                 FROM signals
+                WHERE source = 'depotcharge'
+                  AND raw_state->>'country' IS NOT NULL
+                  AND lon IS NOT NULL AND lat IS NOT NULL"""
+        )
+        dc_points = cur.fetchall()
+
+    if dc_points:
+        for feat in features:
+            props = feat["properties"]
+            if props.get("province"):
+                continue
+            x, y = feat["geometry"]["coordinates"][:2]
+            if 3.2 <= x <= 7.3 and 50.7 <= y <= 53.6:
+                continue
+            best = min(dc_points, key=lambda r: (r["lon"] - x) ** 2 + (r["lat"] - y) ** 2)
+            props["country"] = best["c"] or ""
 
     features.sort(key=lambda f: (-TIER_ORDER[f["properties"]["tier"]], -f["properties"]["score"]))
     by_tier = Counter(f["properties"]["tier"] for f in features)

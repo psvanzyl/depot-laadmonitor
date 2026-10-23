@@ -32,6 +32,25 @@ from ..store import Store, as_json
 # wider map is ever wanted.
 NL_COUNTRIES = {"Nederland", "Niederlande", "Netherlands", "NL"}
 
+# The fleet feed is mostly German and Swiss. Those rows are wanted on the map, so
+# the gate is now "a country we can name", not "in the Netherlands". Labels arrive
+# localised (Deutschland / Suisse / Spanien), so map both spellings to a code.
+COUNTRY_CODE = {
+    "Nederland": "NL", "Niederlande": "NL", "Netherlands": "NL",
+    "Deutschland": "DE", "Germany": "DE",
+    "Schweiz": "CH", "Suisse": "CH", "Switzerland": "CH",
+    "Spanien": "ES", "Espana": "ES", "España": "ES", "Spain": "ES",
+    "Italien": "IT", "Italia": "IT", "Italy": "IT",
+    "Osterreich": "AT", "Österreich": "AT", "Austria": "AT",
+    "Belgie": "BE", "België": "BE", "Belgique": "BE", "Belgium": "BE",
+    "Luxemburg": "LU", "Luxembourg": "LU",
+    "Liechtenstein": "LI",
+    "Frankreich": "FR", "France": "FR",
+    "Danemark": "DK", "Dänemark": "DK", "Denmark": "DK",
+    "Polen": "PL", "Poland": "PL",
+}
+COUNTRY_OK = set(COUNTRY_CODE)
+
 # Truck ratings that mean the bay physically suits an HGV. NOT_COMPATIBLE does not.
 TRUCK_OK = {"PULL_THROUGH", "REVERSE_OUT", "UNCOUPLE", "UNCOUPLE_RECOMMEND"}
 
@@ -72,7 +91,7 @@ def normalise(row: dict, chargepoints: list[dict], fleet_url: str) -> dict | Non
     loc = row.get("location") or {}
     addr = loc.get("address") or {}
     country = addr.get("country")
-    if country not in NL_COUNTRIES:
+    if country not in COUNTRY_OK:
         return None
 
     lon = (loc.get("coordinates") or {}).get("longitude")
@@ -83,7 +102,9 @@ def normalise(row: dict, chargepoints: list[dict], fleet_url: str) -> dict | Non
     connectors = [c for cp in chargepoints for c in (cp.get("connectors") or [])]
     truck_ratings = {c.get("truckCompatibility") for c in connectors if c.get("truckCompatibility")}
     hgv = bool(truck_ratings & TRUCK_OK)
-    power = _max_power(connectors)
+    power = _max_power(connectors) or (
+        loc.get("expectedChargePointPowerLevel") or None
+    )
     access = {"PRIVATE": "private", "PUBLIC": "public"}.get(
         (loc.get("accessType") or "").upper(), "unknown")
     operational = (loc.get("operationalStatus") or "").upper() == "OPERATIONAL"
@@ -92,7 +113,13 @@ def normalise(row: dict, chargepoints: list[dict], fleet_url: str) -> dict | Non
     # reason to think a truck could charge there: an explicit truck rating, a
     # private yard, or enough power to matter. This drops the planned public
     # fillers that carry no connectors at all.
-    if not (hgv or access == "private" or (power or 0) >= MIN_TRUCK_KW):
+    has_plan = bool(loc.get("plannedChargePoints"))
+    if not (
+        hgv
+        or access in ("private", "public", "semi_public")
+        or (power or 0) >= MIN_TRUCK_KW
+        or has_plan
+    ):
         return None
 
     # Tier input: "operational" is reserved for sites the feed actually backs with
@@ -108,6 +135,8 @@ def normalise(row: dict, chargepoints: list[dict], fleet_url: str) -> dict | Non
         "operational_status": loc.get("operationalStatus"),
         "opening_date": loc.get("openingDate"),
         "visibility": loc.get("visibility"),
+        "country": COUNTRY_CODE.get(country),
+        "country_raw": country,
         "truck_ratings": sorted(truck_ratings),
         "connectors": [
             {
@@ -128,6 +157,7 @@ def normalise(row: dict, chargepoints: list[dict], fleet_url: str) -> dict | Non
         "address": addr.get("street"),
         "postcode": (addr.get("postalCode") or "").replace(" ", "") or None,
         "city": addr.get("city"),
+        "country": COUNTRY_CODE.get(country),
         "lon": float(lon),
         "lat": float(lat),
         "bag_id": None,
@@ -177,7 +207,7 @@ def run(store: Store, settings: Settings) -> dict:
         lid = loc.get("id")
         sig = normalise(row, cps.get(lid, []), fleet_url)
         if sig is None:
-            if country not in NL_COUNTRIES:
+            if country not in COUNTRY_OK:
                 stats["skipped_country"] += 1
             elif not (loc.get("coordinates") or {}).get("latitude"):
                 stats["skipped_nogeom"] += 1

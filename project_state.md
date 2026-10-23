@@ -405,3 +405,47 @@ coordinates, content-hash stability. Suite total: **68 green**.
 This is a customer fleet's data. Publishing it on a public map is a licensing
 question regardless of how it was obtained. Internal use is fine; that decision
 is boss's.
+## 2026-10-23 — all Depotcharge countries on the map
+
+### What changed
+- `src/depotmon/ingest/depotcharge.py`: the NL-only gate is gone. `COUNTRY_CODE`
+  maps localised labels (`Deutschland`, `Suisse`, `Spanien`, `België` …) to ISO-2
+  and `COUNTRY_OK` is the allow-list. Power falls back to
+  `expectedChargePointPowerLevel` when no connector detail exists. The relevance
+  gate keeps any location with a known access class, so public foreign sites are
+  not dropped for lacking per-connector data.
+- `scripts/export_webapp_data.py`: emits `country`.
+- `webapp/components/MapView.tsx`: `NL_BOUNDS` widened to cover the feed.
+
+### Result
+- Signals: 265 (was 81). DE 135, NL 81, CH 34, ES 6, AT 3, IT 3, LI 1, LU 1, BE 1.
+- Features: 625 (was 558). By country: NL 414, unknown 138, DE 30, CH 31, ES 6,
+  IT 2, AT 2, LU 1, LI 1. 80 features sit outside the Dutch box.
+- Access: publiek 288, semi-publiek 65, privaat 104, onbekend 168. HGV 315.
+- Power: 161,509 kW summed where known.
+
+### Two traps worth remembering
+1. **Country cannot come from `doc_url`.** Every Depotcharge signal shares one
+   fleet URL, so `doc_url = ANY(evidence) ... LIMIT 1` returns an arbitrary row
+   and mislabels Germany as Luxembourg. Country is now resolved by proximity to
+   the nearest Depotcharge point, and only outside the NL bounding box.
+2. **`geom` is sparse.** `ST_X(geom)` returned almost nothing, so every foreign
+   feature matched the same nearest point. Use the `lon`/`lat` columns.
+
+### QA harness bug (not a product bug)
+The map appeared blank for hours: `styleLoaded: false`, 0 tile requests, no
+console errors, canvas correctly sized 1220x804. Cause: the CDP tab was
+`visibilityState: hidden`, and MapLibre only starts loading a style when it first
+renders a frame. `Page.bringToFront` + `Emulation.setFocusEmulationEnabled`
+fixed it (`styleLoaded: true`, 24 tiles, 1.7 MB screenshot). Every earlier
+"blank map" conclusion was a measurement artefact. `shot_visible.py` now sets
+visibility before capturing.
+
+### Open
+- Mobile (390 px): the map overlays the filter card, so the TOEGANG chips are
+  unreachable and the B legend line is clipped. Real layout bug, not yet fixed.
+- 138 features carry no country/province. These are NL rows with unknown
+  location detail, left blank rather than guessed.
+- Per-connector truck ratings for the foreign sites still need an authenticated
+  pull (Bitwarden unlock was declined); until then they are power proxies or
+  `none`, never `rated`.

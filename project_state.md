@@ -298,3 +298,110 @@ free. Reclaimed 10.8GB with `docker builder prune -af` + `docker image prune -a`
 (8.7GB of unused images, 2GB dead build cache) -> 73%, 11GB free. Postgres was
 unharmed and NDW ingested immediately after. 40G is too small for this host's
 toolchains; watch it.
+# Depotcharge fleet map — new source (2026-10-23)
+
+## What it is
+
+`hub.depotcharge.com/fleet/map?fleetId=52c2bebe-…` is a login-walled fleet
+management map (React SPA). There is **no public API** and the only
+unauthenticated endpoint is `public/communities/branding` (logo/colours), so it
+cannot be polled anonymously and must not be hammered.
+
+The payload is worth the effort because it carries, per connector:
+
+* `truckCompatibility` — `PULL_THROUGH`, `REVERSE_OUT`, `UNCOUPLE`,
+  `UNCOUPLE_RECOMMEND`, `NOT_COMPATIBLE`. An **explicit** heavy-duty rating.
+* `maxElectricPower`, `connectorType` (CCS / Type2 / MCS), `powerType`.
+* Exact `coordinates`, street, postcode, city, operator, access, status.
+
+That is stronger evidence than any other source in this project: the operator's
+own record of its own site.
+
+## How it is wired in (snapshot, not scraping)
+
+    data/depotcharge/locations.json     all 265 map-locations rows
+    data/depotcharge/chargepoints.json  81 NL chargepoint sets, keyed by location id
+
+`src/depotmon/ingest/depotcharge.py` **never touches the network**. It reads the
+snapshot, so a login wall, an expired token or a rate limit cannot break the
+daily run. `data/` is gitignored.
+
+Refresh by hand when stale:
+
+1. Log in to `https://hub.depotcharge.com/auth` in Chromium started with
+   `--remote-debugging-port=9222` (see `scripts/depotcharge_snapshot.py`).
+2. `./scripts/run.sh scripts/depotcharge_snapshot.py`
+3. Let the normal cycle run — `depotmon.cli daily` now includes `depotcharge`.
+
+Missing snapshot is **not** an error: the ingest records `status="skipped"` and
+the cycle continues.
+
+## Scope and gate
+
+* Netherlands only (`Nederland`/`Niederlande`/…). The feed has 184 foreign sites
+  (DE 135, CH 34, ES 6, IT 3, AT 3, BE 1, LI 1). Change `NL_COUNTRIES` to widen.
+* Relevance gate — a row is kept only if it has an explicit truck rating, is a
+  private yard, or has ≥ 50 kW. That drops 51 planned public fillers that carry
+  no connectors at all (mostly `Local Green Energy`).
+* `status_hint="operational"` only when the feed backs the claim with hardware
+  (truck rating or ≥ 50 kW). An `OPERATIONAL` flag with no connectors is scored
+  as a plan, because it cannot be checked.
+
+Result of the first run: 265 rows → **30 signals** (21 truck-capable, 50–480 kW).
+
+## What it did to the map
+
+    154 → 169 sites      A 1 → 7      HGV-rated 61 → 67      33,334 → 35,104 kW
+
+Six new **tier A** rows, all genuine logistics operators:
+
+| operator | city | kW |
+|---|---|---|
+| Farm Charge | Wieringerwerf | 480 |
+| Woodpacker Laadplein | Drachten | 400 |
+| Bode Scholten | Zoetermeer | 360 |
+| Bos Partnership in Logistics | Ede | 240 |
+| Schagen Groep Beheer | Hasselt | 240 |
+| Limpens Elsloo | Elsloo | 50 |
+
+Nine rows landed at tier C (planned private yards with no connectors yet).
+
+**Fifteen signals never became rows, by design.** They are public hubs (LEAP24 ×11,
+Jobtrans, Roeleveld Rolink, Tielbeke, TotalEnergies de Esch) and the existing
+`PUBLIC_ACCESS_PENALTY` drops them as non-depot sites. The signals stay in the
+`signals` table, so a future "public HDV hub" layer needs no re-fetch.
+
+## Scoring weight
+
+`premises.py WEIGHTS["depotcharge"] = {operational: 0.90, planned: 0.52, unknown: 0.45}`
+
+`PREMISES_SQL` also had a `kind IN (...)` whitelist that silently excluded the new
+kind; `depotcharge` was added there. **Any new source must be added in both
+places** — a signal can be in `signals` and invisible to scoring otherwise.
+
+## Tests
+
+`tests/test_depotcharge.py` (11 tests): NL scope, Dutch/German country spellings,
+the relevance gate, public-with-truck kept, NOT_COMPATIBLE rejected, power = max
+across connectors, MCS mapping, operational-without-hardware → plan, missing
+coordinates, content-hash stability. Suite total: **68 green**.
+
+## Access notes (for the next person)
+
+* The Hermes host has **no route** to `*.depotcharge.com` (both hosts time out;
+  CT141 reaches them). A temporary `/etc/hosts` + `ssh -L` tunnel works but was
+  reverted — do not leave it in place.
+* The SPA does not boot under automation until its module is force-imported, and
+  it **hangs if QUIC is enabled** through a TCP tunnel (`Alt-Svc: h3` on UDP that
+  `ssh -L` cannot forward). Launch Chromium with `--disable-quic`.
+* Headless with `--disable-gpu` has no WebGL and the map shows its error
+  boundary; use `--use-gl=angle --use-angle=swiftshader
+  --enable-unsafe-swiftshader` under Xvfb.
+* Caddy `tls internal` means a fresh browser profile needs
+  `--ignore-certificate-errors`, or the CA importing.
+
+## Licensing
+
+This is a customer fleet's data. Publishing it on a public map is a licensing
+question regardless of how it was obtained. Internal use is fine; that decision
+is boss's.

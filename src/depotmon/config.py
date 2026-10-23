@@ -42,6 +42,18 @@ class Settings:
     report_dir: Path = field(
         default_factory=lambda: Path(os.environ.get("REPORT_DIR", "/data/reports"))
     )
+    # Depotcharge has no API and must not be polled, so the ingest reads a
+    # snapshot captured from an authenticated browser session.
+    depotcharge_dir: Path = field(
+        default_factory=lambda: Path(os.environ.get("DEPOTCHARGE_DIR", "/data/depotcharge"))
+    )
+    depotcharge_fleet_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "DEPOTCHARGE_FLEET_URL",
+            "https://hub.depotcharge.com/fleet/map"
+            "?fleetId=52c2bebe-2419-4954-a079-8a625844abea",
+        )
+    )
     user_agent: str = field(
         default_factory=lambda: os.environ.get(
             "USER_AGENT",

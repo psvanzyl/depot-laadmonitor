@@ -56,6 +56,11 @@ WEIGHTS: dict[str, dict[str, float]] = {
     },
     "osm": {"*": 0.58},        # private/customers/hgv tagged charge point in OSM
     "subsidy": {"*": 0.72},    # named beneficiary of a charging subsidy
+    # Operator's own fleet-management record: exact coordinates, per-connector
+    # power and an explicit truckCompatibility rating. Stronger than a news
+    # mention because it is the operator's own published data, but a "planned"
+    # site is still only a plan.
+    "depotcharge": {"operational": 0.90, "planned": 0.52, "unknown": 0.45},
 }
 
 # Counter-evidence: the site is part of the public charge network, i.e. not our product.
@@ -211,7 +216,7 @@ SELECT signal_id, source, kind, name, operator, address, postcode, city, power_k
 FROM signals
 WHERE last_seen >= now() - interval '730 days'
   AND (operator IS NOT NULL OR postcode IS NOT NULL OR address IS NOT NULL)
-  AND kind IN ('news', 'permit', 'osm', 'ndw', 'subsidy')
+  AND kind IN ('news', 'permit', 'osm', 'ndw', 'subsidy', 'depotcharge')
 """
 
 

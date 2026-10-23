@@ -10,3 +10,6 @@ PW="$(docker exec depotmon-db printenv POSTGRES_PASSWORD 2>/dev/null)" || {
 [ -n "${PW:-}" ] || { echo "env.sh: empty POSTGRES_PASSWORD" >&2; return 1 2>/dev/null || exit 1; }
 export DATABASE_URL="postgresql://depotmon:${PW}@127.0.0.1:5433/depotmon"
 unset PW
+
+# Depotcharge snapshot lives in the project tree (data/ is gitignored).
+export DEPOTCHARGE_DIR="${DEPOTCHARGE_DIR:-/root/projects/depot-laadmonitor/data/depotcharge}"

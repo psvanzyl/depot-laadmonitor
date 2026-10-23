@@ -192,3 +192,51 @@ look for postcodes in the operator field first; that found this in one query.
 Remaining known noise: "Mercedes (Munchen)", "Volvo (Goteborg)", "Brakes (?)" -
 foreign or fragmentary, they export without coordinates so they do not plot, but
 they still inflate the count and should be dropped by a foreign-city check.
+
+## The daily service was failing for three separate reasons (resolved 2026-10-23)
+
+Starting the unit by hand surfaced three distinct defects. Only the first was
+visible in the status line.
+
+**1. A latent crash that only fires once something changes.**
+`diff/runner.py` stores the changed-field payload as `json.dumps(fields)`, but
+psycopg returns `Decimal` for `numeric` and `datetime` for `timestamptz`. The
+daily pipeline died with `Object of type Decimal is not JSON serializable` and
+exited 1. It had never fired before because the diff only serialises fields for
+sites that ACTUALLY changed, and nothing had changed between runs. The first
+morning a real change landed, the job would have crashed. Fixed with
+`_json_default` (Decimal->float, date/datetime->ISO). Verified: the confirming run
+recorded `changed: 2` against `run_id 145` with no traceback.
+
+Lesson: a pipeline that is green because its change path is never exercised is
+not tested. Assert on the serialisation directly, not on the happy path.
+
+**2. Exit codes conflated "source flaky" with "job broken".**
+Propagating the pipeline rc meant a red unit every morning for Overpass timing
+out, which trains everyone to ignore red. New contract in `daily_cycle.sh`:
+- pipeline rc 2 = degraded sources, run completed -> EXIT 0, loud `DEGRADED` line
+- export failure, or pipeline rc 1 = hard failure -> non-zero
+- always writes `/var/log/depotmon-status.json`
+  (`finished`, `pipeline_rc`, `export_rc`, `degraded`) so health is checkable
+  without parsing logs.
+
+**3. The gated wrapper had never executed.**
+`daily_cycle.sh` mtime was 12:07 while the failing invocation started 11:56, so
+every observed failure came from the pre-gates script. After installing the new
+one the run proved the full chain: gates, rescore, export, status file, exit 0.
+Final state of a degraded-but-published run:
+
+    [daily] pipeline exit: 2
+    [daily] export exit: 0
+    [daily] DEGRADED source failure, map still refreshed (see ALERT above)
+    [daily] OK
+    {"pipeline_rc":2,"export_rc":0,"degraded":true}
+
+Overpass remains flaky (all mirrors read-timed-out on this run). OSM is a
+supplementary source here, so degradation is acceptable, but it means osm-derived
+rows go stale on those nights. Worth adding a mirror fallback with a longer
+timeout, or moving OSM to the weekly run.
+
+Tests: 48 passing, including new `tests/test_regressions.py` pinning the Decimal
+serialisation and the operator guards (address-as-operator, job titles, generic
+place nouns).

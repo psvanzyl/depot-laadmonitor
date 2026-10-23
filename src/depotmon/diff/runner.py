@@ -3,11 +3,27 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
+from decimal import Decimal
 
 from ..config import Settings
 from ..store import Store
 
 ACTIVE_WINDOW_DAYS = 400
+
+
+def _json_default(obj):
+    """psycopg hands back Decimal for numeric and datetime for timestamptz.
+
+    Both are normal in a change payload, neither is JSON. Convert rather than
+    stringify where the type has an obvious JSON equivalent, so the stored
+    payload stays machine-readable for the webapp.
+    """
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    return str(obj)
 
 
 def run(store: Store, settings: Settings) -> dict:
@@ -83,7 +99,7 @@ def run(store: Store, settings: Settings) -> dict:
                 cur.execute(
                     """INSERT INTO changes(run_id, site_id, change_type, fields)
                        VALUES (%s,%s,%s,%s)""",
-                    (run_id, site_id, change_type, json.dumps(fields)),
+                    (run_id, site_id, change_type, json.dumps(fields, default=_json_default)),
                 )
                 stats[change_type] += 1
 

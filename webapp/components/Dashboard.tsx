@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+  ACCESS_HINT,
+  ACCESS_LABEL,
   CHANNEL_LABEL,
   TIER_COLOR,
   TIER_HINT,
   TIER_LABEL,
+  type AccessClass,
   type Depots,
   type Summary,
   type Tier,
@@ -25,11 +28,15 @@ const nf = new Intl.NumberFormat("nl-NL");
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const dataUrl = (file: string) => `${BASE_PATH}/data/${file}`;
 const ALL_TIERS: Tier[] = ["A", "B", "C"];
+const ALL_ACCESS: AccessClass[] = ["public", "semi_public", "private", "unknown"];
+const accessOf = (p: { accessClass?: AccessClass }): AccessClass =>
+  p.accessClass ?? "unknown";
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [depots, setDepots] = useState<Depots | null>(null);
   const [tiers, setTiers] = useState<Tier[]>(ALL_TIERS);
+  const [access, setAccess] = useState<AccessClass[]>(ALL_ACCESS);
   const [hgvOnly, setHgvOnly] = useState(false);
   const [companies, setCompanies] = useState<{ type: "FeatureCollection"; features: unknown[] } | null>(null);
   const [showCompanies, setShowCompanies] = useState(true);
@@ -57,6 +64,7 @@ export default function Dashboard() {
     () =>
       all
         .filter((f) => tiers.includes(f.properties.tier))
+        .filter((f) => access.includes(accessOf(f.properties)))
         .filter((f) => (hgvOnly ? f.properties.hgv : true))
         .filter((f) => (minKw > 0 ? (f.properties.powerKw ?? 0) >= minKw : true))
         .sort(
@@ -64,12 +72,23 @@ export default function Dashboard() {
             "ABC".indexOf(a.properties.tier) - "ABC".indexOf(b.properties.tier) ||
             b.properties.score - a.properties.score,
         ),
-    [all, tiers, hgvOnly, minKw],
+    [all, tiers, access, hgvOnly, minKw],
   );
 
   const tierCounts = useMemo(() => {
     const c: Record<Tier, number> = { A: 0, B: 0, C: 0 };
     for (const f of all) c[f.properties.tier] += 1;
+    return c;
+  }, [all]);
+
+  const accessCounts = useMemo(() => {
+    const c: Record<AccessClass, number> = {
+      public: 0,
+      semi_public: 0,
+      private: 0,
+      unknown: 0,
+    };
+    for (const f of all) c[accessOf(f.properties)] += 1;
     return c;
   }, [all]);
 
@@ -86,15 +105,18 @@ export default function Dashboard() {
   const toggleTier = (t: Tier) =>
     setTiers((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
+  const toggleAccess = (a: AccessClass) =>
+    setAccess((cur) => (cur.includes(a) ? cur.filter((x) => x !== a) : [...cur, a]));
+
   return (
     <div className="h-screen flex flex-col">
       <header className="bg-white border-b border-slate-200 shadow-sm z-20">
         <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           <h1 className="text-lg font-bold text-slate-900 whitespace-nowrap">
-            <span className="text-amber-600">⚡</span> Depotlaadpalen
+            <span className="text-amber-600">⚡</span> Laadlocaties zwaar vervoer
           </h1>
           <p className="text-xs text-slate-500 hidden md:block">
-            Private laadlocaties bij logistieke bedrijven in Nederland
+            Publieke, semi-publieke en private laadlocaties voor zwaar vervoer
           </p>
           {summary && (
             <span className="text-[11px] text-slate-400 ml-auto">
@@ -111,7 +133,7 @@ export default function Dashboard() {
               {depots ? nf.format(visible.length) : "…"}
             </div>
             <p className="text-sm text-slate-600">
-              private depotlaadlocaties met bewijs, van {nf.format(all.length)} gescoorde
+              laadlocaties met bewijs, van {nf.format(all.length)} gescoorde
               locaties.
             </p>
             <p className="text-xs text-slate-500">
@@ -190,6 +212,31 @@ export default function Dashboard() {
             </div>
           </section>
 
+          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Toegang
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {ALL_ACCESS.map((a) => {
+                const on = access.includes(a);
+                return (
+                  <button
+                    key={a}
+                    onClick={() => toggleAccess(a)}
+                    title={ACCESS_HINT[a]}
+                    className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                      on
+                        ? "bg-slate-900 border-slate-900 text-white"
+                        : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                    }`}
+                  >
+                    {ACCESS_LABEL[a]} · {nf.format(accessCounts[a])}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
           <section className="bg-white rounded-xl border border-slate-200 p-4">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
               Locaties ({nf.format(visible.length)})
@@ -223,6 +270,7 @@ export default function Dashboard() {
                           ? " · bij benadering"
                           : ""}
                         {p.hgv ? " · HGV" : ""}
+                        {accessOf(p) === "unknown" ? "" : ` · ${ACCESS_LABEL[accessOf(p)]}`}
                         {" · "}
                         {p.evidenceCount} bron{p.evidenceCount === 1 ? "" : "nen"}
                       </div>
@@ -266,7 +314,8 @@ export default function Dashboard() {
           )}
 
           <p className="text-[11px] leading-relaxed text-slate-400 px-1">
-            Private laadlocaties hebben geen openbaar register. Elke locatie is afgeleid
+            Private depotlaadlocaties hebben geen openbaar register; publieke en semi-publieke
+              punten komen uit het landelijke laadpuntenregister. Elke locatie is afgeleid
             uit indirect bewijs — {Object.values(CHANNEL_LABEL).join(", ")} — en elke rij
             linkt naar de bron. Publieke laadpleinen worden juist verworpen.
             {summary?.sites.withoutCoords
@@ -282,6 +331,7 @@ export default function Dashboard() {
             showCompanies={showCompanies}
             minKw={minKw}
             tiers={tiers}
+            access={access}
             hgvOnly={hgvOnly}
             focus={focus}
             onSelect={(id) => {

@@ -9,6 +9,7 @@ result is tagged with its precision so the map can be honest about it.
 from __future__ import annotations
 
 import json
+import pathlib
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,46 @@ from depotmon.store import Store
 OUT = Path("webapp/public/data")
 TIER_ORDER = {"A": 3, "B": 2, "C": 1}
 
+
+
+# --- province from coordinates (PDOK provinciegrenzen, downloaded once) --------
+_PROVINCES: list | None = None
+
+
+def _provinces() -> list:
+    global _PROVINCES
+    if _PROVINCES is None:
+        path = pathlib.Path(__file__).resolve().parents[1] / "resources/geo/provinces.geojson"
+        try:
+            gj = json.loads(path.read_text())
+            _PROVINCES = [(f["properties"]["statnaam"], f["geometry"]) for f in gj["features"]]
+        except Exception:
+            _PROVINCES = []
+    return _PROVINCES
+
+
+def _in_ring(x: float, y: float, ring: list) -> bool:
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i][0], ring[i][1]
+        xj, yj = ring[j][0], ring[j][1]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def province_for(lon: float, lat: float) -> str | None:
+    """Ray casting against the 12 Dutch province polygons."""
+    for name, geom in _provinces():
+        polys = geom["coordinates"] if geom["type"] == "MultiPolygon" else [geom["coordinates"]]
+        for poly in polys:
+            if not poly:
+                continue
+            if _in_ring(lon, lat, poly[0]) and not any(_in_ring(lon, lat, h) for h in poly[1:]):
+                return name
+    return None
 
 def evidence_urls(ev) -> list[str]:
     if not isinstance(ev, list):
@@ -44,7 +85,7 @@ def main() -> None:
         cur.execute(
             """SELECT place_key, operator, city, postcode, address, tier, score,
                       power_kw, n_points, hgv_capable, channels, evidence,
-                      lon, lat, location_basis
+                      lon, lat, location_basis, access_class
                  FROM premises_scores
                 ORDER BY score DESC"""
         )
@@ -117,6 +158,8 @@ def main() -> None:
         if lat is None:
             no_geo.append(row["place_key"])
             continue
+        if not province and lon is not None:
+            province = province_for(lon, lat)
         precision_counts[precision or "unknown"] += 1
         features.append(
             {
@@ -135,6 +178,16 @@ def main() -> None:
                     "powerKw": float(row["power_kw"]) if row["power_kw"] else None,
                     "nPoints": int(row["n_points"]) if row["n_points"] else None,
                     "hgv": bool(row["hgv_capable"]),
+                    # Is the truck signal a real rating, or only power? A 350 kW
+                    # Fastned site is not the same evidence as a pull-through bay.
+                    "hgvBasis": (
+                        "rated" if row["hgv_capable"]
+                        and ({"depotcharge", "osm"} & set(row["channels"] or []))
+                        else "power_proxy" if (row["power_kw"] or 0) >= 350
+                        else "text_mention" if row["hgv_capable"]
+                        else "none"),
+                    # Publiek / semi-publiek / privaat — RVO dashboard terminology.
+                    "accessClass": row["access_class"] or "unknown",
                     "channels": list(row["channels"] or []),
                     "evidenceCount": len(urls),
                     "evidence": urls[:6],
@@ -151,6 +204,7 @@ def main() -> None:
     for f in features:
         for ch in f["properties"]["channels"]:
             by_channel[ch] += 1
+    by_access = Counter(f["properties"]["accessClass"] for f in features)
     total_kw = sum(f["properties"]["powerKw"] or 0 for f in features)
     known_kw = sum(1 for f in features if f["properties"]["powerKw"])
 
@@ -167,6 +221,8 @@ def main() -> None:
             "withoutCoords": len(no_geo),
             "byTier": {t: by_tier.get(t, 0) for t in ("A", "B", "C")},
             "hgv": sum(1 for f in features if f["properties"]["hgv"]),
+            "byAccess": {k: by_access.get(k, 0)
+                         for k in ("public", "semi_public", "private", "unknown")},
         },
         "power": {"totalKw": round(total_kw, 1), "sitesWithKw": known_kw},
         "byProvince": dict(by_province.most_common()),
@@ -176,7 +232,11 @@ def main() -> None:
             "permits": "KOOP SRU 2.0 — Officiële Bekendmakingen (gemeente-/provinciaal blad, Staatscourant)",
             "news": "publisher RSS + sitemap-archief (TTM, Nieuwsblad Transport, Tankpro, WattisDuurzaam, Change.inc, Schuttevaer)",
             "geocoding": "PDOK Locatieserver",
-            "counterEvidence": "NDW/OCM laadpuntenregister (alleen als tegenbewijs: publiek laadplein)",
+            "counterEvidence": ("NDW laadpuntenregister — tegenbewijs voor een privaat depot op "
+                                "dezelfde locatie; HDV-capabele punten (>= 350 kW of truckrating) "
+                                "tellen als publieke laadlocatie"),
+            "accessTaxonomy": ("Publiek / semi-publiek / privaat volgens RVO Dashboard "
+                               "Laadinfrastructuur (dashboardklimaatbeleid.nl)"),
         },
     }
     (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

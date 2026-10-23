@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import maplibregl, { type Map as MlMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { TIER_COLOR, type Depots, type Tier } from "@/lib/types";
+import { TIER_COLOR, type AccessClass, type Depots, type Tier } from "@/lib/types";
 
 // The company base layer: every known transport/logistics premises in NL. Depot
 // findings are drawn on top of it, at the company's own yard where we can prove it.
@@ -37,6 +37,7 @@ interface Props {
   showCompanies?: boolean;
   minKw?: number;
   tiers: Tier[];
+  access: AccessClass[];
   hgvOnly: boolean;
   focus: { id: string; lon: number; lat: number } | null;
   onSelect: (id: string) => void;
@@ -87,6 +88,7 @@ export default function MapView({
   showCompanies = true,
   minKw = 0,
   tiers,
+  access,
   hgvOnly,
   focus,
   onSelect,
@@ -108,7 +110,21 @@ export default function MapView({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
+
+    // MapLibre measures the container once, at construction. When the sidebar
+    // grows (extra filter rows), the map keeps a stale canvas size and paints
+    // nothing until something forces a resize — the page then reads as "blank
+    // map while the zoom controls still render". Observe the container instead.
+    const container = containerRef.current;
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(container);
+    map.once("load", () => map.resize());
+    // Fonts and the first paint can land after load; one deferred resize is cheap.
+    const t = window.setTimeout(() => map.resize(), 400);
+
     return () => {
+      window.clearTimeout(t);
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
     };
@@ -214,15 +230,17 @@ export default function MapView({
     else map.once("load", ensure);
   }, [depots]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tier + HGV filters are client-side, so the chips work without a rebuild.
+  // Tier, HGV, power and access filters are client-side, so the chips work without a rebuild.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.getLayer("depots")) return;
     const filters: unknown[] = [["in", ["get", "tier"], ["literal", tiers]]];
+    // Missing accessClass (older data) counts as "unknown", matching the sidebar list.
+    filters.push(["in", ["coalesce", ["get", "accessClass"], "unknown"], ["literal", access]]);
     if (hgvOnly) filters.push(["==", ["get", "hgv"], true]);
     if (minKw > 0) filters.push([">=", ["coalesce", ["get", "powerKw"], 0], minKw]);
     map.setFilter("depots", ["all", ...filters] as never);
-  }, [tiers, hgvOnly, minKw, depots]);
+  }, [tiers, access, hgvOnly, minKw, depots]);
 
   useEffect(() => {
     const map = mapRef.current;

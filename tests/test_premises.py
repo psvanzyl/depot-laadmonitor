@@ -38,13 +38,35 @@ def test_single_plan_without_address_is_only_a_candidate():
 
 
 def test_public_charge_point_lowers_score():
-    base = premises.score_evidence([_item("news", "operational")])
+    """A public CAR charger still contradicts a private depot claim.
+
+    kind must be the value production actually emits ("chargepoint"). The previous
+    version used "ndw", which no ingester produces, so it guarded a dead branch
+    while the real counter-evidence never fired.
+    """
+    # The premises itself must not be HDV-capable, otherwise the public point is
+    # part of the same HDV site rather than a contradiction.
+    # power_kw=None matters: _item defaults to 400 kW, which would make the news
+    # claim itself HDV-capable and exempt the public point from counter-evidence.
+    base = premises.score_evidence([
+        _item("news", "operational", hgv_capable=False, power_kw=None)])
     with_ndw = premises.score_evidence([
-        _item("news", "operational"),
-        _item("ndw", "operational"),
+        _item("news", "operational", hgv_capable=False, power_kw=None),
+        _item("chargepoint", "operational", hgv_capable=False, power_kw=22),
     ])
     assert with_ndw["score"] < base["score"]
     assert any("counter" in r for r in with_ndw["reasons"])
+
+
+def test_public_hdv_charge_point_does_not_lower_score():
+    """RVO counts public and semi-public HDV points, so the map keeps them
+    instead of treating them as counter-evidence."""
+    base = premises.score_evidence([_item("news", "operational")])
+    with_hdv = premises.score_evidence([
+        _item("news", "operational"),
+        _item("chargepoint", "operational", hgv_capable=False, power_kw=400),
+    ])
+    assert with_hdv["score"] >= base["score"]
 
 
 def test_correlated_items_do_not_stack_linearly():

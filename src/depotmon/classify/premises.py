@@ -64,10 +64,20 @@ WEIGHTS: dict[str, dict[str, float]] = {
 }
 
 # Counter-evidence: the site is part of the public charge network, i.e. not our product.
-COUNTER = {"ndw": 0.80}
+# NDW ingests with kind="chargepoint", not "ndw" — keying only on "ndw" made this
+# whole mechanism dead code, so both names are listed.
+PUBLIC_KINDS = {"ndw", "chargepoint"}
+COUNTER = {"ndw": 0.80, "chargepoint": 0.80}
 
 # A public hub is not a depot: same treatment as a public charge point.
 PUBLIC_ACCESS_PENALTY = 0.80
+
+# An HDV-capable public charge point is a different product from a public car
+# charger: RVO counts "publieke en semipublieke laadpunten voor zwaar vervoer", so
+# the map publishes them too. Power is a proxy for truck suitability, not a rating,
+# so these rows stay low-confidence instead of claiming a verified depot.
+HDV_PROXY_KW = 350.0
+NDW_PUBLIC_WEIGHT = 0.45
 
 # A "laadplein" with no company attached is a shared/public plaza, not a private depot.
 # Boss's product is depot chargers on company yards, so these become leads, not finds.
@@ -95,8 +105,36 @@ def _lifecycle_of(sig: dict) -> str:
     return raw.get("lifecycle") or ""
 
 
+def _hdv_evidence(sig: dict) -> bool:
+    """Can this point plausibly charge a truck?"""
+    return bool(sig.get("hgv_capable")) or float(sig.get("power_kw") or 0) >= HDV_PROXY_KW
+
+
+def _access_class(items: list[dict]) -> str:
+    """Public / semi-public / private, in RVO dashboard terminology.
+
+    NDW is the national charge-point registry, so its points are publicly
+    accessible even when its own access field is blank. A customers/permit point
+    is semi-public; only an explicitly restricted point is private.
+    """
+    if any(it["kind"] in PUBLIC_KINDS for it in items):
+        return "public"
+    values = {(it.get("access") or "").lower() for it in items}
+    if "public" in values:
+        return "public"
+    if values & {"customers", "permit", "semi_public"}:
+        return "semi_public"
+    if "private" in values:
+        return "private"
+    return "unknown"
+
+
 def _weight_for(sig: dict) -> float:
     kind = sig["kind"]
+    if kind in PUBLIC_KINDS:
+        # Only an HDV-capable public point is evidence; a public car charger is
+        # counter-evidence and must never add score.
+        return NDW_PUBLIC_WEIGHT if _hdv_evidence(sig) else 0.0
     table = WEIGHTS.get(kind)
     if not table:
         return 0.0
@@ -113,8 +151,13 @@ def score_evidence(items: list[dict]) -> dict:
     """
     by_channel: dict[str, list[tuple[float, dict]]] = {}
     counter_items: list[dict] = []
+    group_is_hdv = any(_hdv_evidence(it) for it in items)
     for it in items:
-        if it["kind"] in COUNTER:
+        if it["kind"] in COUNTER and not group_is_hdv:
+            # Counter-evidence: public CHARGE POINTS on a premises with no HDV
+            # capability mean "this is a public car park, not a depot". Where the
+            # premises does have an HDV point, its other points are part of the
+            # same charging site and must not cancel their own neighbour.
             counter_items.append(it)
             continue
         w = _weight_for(it)
@@ -149,7 +192,9 @@ def score_evidence(items: list[dict]) -> dict:
             f"premises ({factor:.2f}x)"
         )
 
-    if any((it.get("access") or "") == "public" for it in items):
+    if any((it.get("access") or "") == "public" for it in items) and not any(
+        _hdv_evidence(it) for it in items
+    ):
         score *= 1.0 - PUBLIC_ACCESS_PENALTY
         reasons.append("counter: public laadplein/hub — not a private depot site")
 
@@ -212,11 +257,11 @@ def score_evidence(items: list[dict]) -> dict:
 PREMISES_SQL = """
 SELECT signal_id, source, kind, name, operator, address, postcode, city, power_kw,
        n_points, hgv_capable, access, status_hint, doc_url, observed_at, raw_state,
-       text_excerpt
+       text_excerpt, lat, lon
 FROM signals
 WHERE last_seen >= now() - interval '730 days'
   AND (operator IS NOT NULL OR postcode IS NOT NULL OR address IS NOT NULL)
-  AND kind IN ('news', 'permit', 'osm', 'ndw', 'subsidy', 'depotcharge')
+  AND kind IN ('news', 'permit', 'osm', 'ndw', 'chargepoint', 'subsidy', 'depotcharge')
 """
 
 
@@ -229,6 +274,10 @@ def _key(sig: dict) -> str:
             part for part in (sig.get("address"), sig.get("postcode"), sig.get("city")) if part
         ).lower()
         company = f"site:{site}" if site else ""
+    if not place and sig.get("lat") is not None and sig.get("lon") is not None:
+        # Charge-point registries carry coordinates but no place name. Without this
+        # every point of one operator collapses into a single nationwide premises.
+        place = f"{float(sig['lat']):.3f},{float(sig['lon']):.3f}"
     return company, place
 
 
@@ -278,6 +327,7 @@ def build(store: Store, settings: Settings) -> dict:
                    default=None)
         results.append({
             "company_key": company,
+            "place_key": place,
             "operator": _label(items),
             "city": (located_item or items[0]).get("city"),
             "postcode": (located_item or {}).get("postcode"),
@@ -300,6 +350,12 @@ def build(store: Store, settings: Settings) -> dict:
             "n_points": max((i["n_points"] for i in items if i.get("n_points")),
                             default=None),
             "hgv_capable": any(i.get("hgv_capable") for i in items),
+            "access_class": _access_class(items),
+            # A registry point knows exactly where it is; do not let the geocoder
+            # move it to a company address afterwards.
+            "signal_coords": next(
+                ((float(i["lon"]), float(i["lat"])) for i in items
+                 if i.get("lon") is not None and i.get("lat") is not None), None),
             "first_seen_at": first,
             "last_seen_at": last,
         })
@@ -327,18 +383,24 @@ def run(store: Store, settings: Settings) -> dict:
                     """INSERT INTO premises_scores(company_key, place_key, operator,
                         city, postcode, address, tier, score, channels, reasons,
                         evidence, power_kw, n_points, hgv_capable, first_seen_at,
-                        last_seen_at)
+                        last_seen_at, access_class, lon, lat, location_basis)
                        VALUES (%(company_key)s, %(place_key)s, %(operator)s, %(city)s,
                         %(postcode)s,
                         %(address)s, %(tier)s, %(score)s, %(channels)s, %(reasons)s,
                         %(evidence)s, %(power_kw)s, %(n_points)s, %(hgv_capable)s,
-                        %(first_seen_at)s, %(last_seen_at)s)""",
+                        %(first_seen_at)s, %(last_seen_at)s,
+                        %(access_class)s,
+                        %(signal_lon)s, %(signal_lat)s, %(location_basis)s)""",
                     {
                         **row,
-                        "place_key": (row.get("postcode") or row.get("city") or "").lower(),
+                        "place_key": (row.get("place_key")
+                                      or row.get("postcode") or row.get("city") or "").lower(),
                         "channels": json.dumps(row["channels"]),
                         "reasons": json.dumps(row["reasons"]),
                         "evidence": json.dumps(row["evidence"]),
+                        "signal_lon": (row.get("signal_coords") or (None, None))[0],
+                        "signal_lat": (row.get("signal_coords") or (None, None))[1],
+                        "location_basis": "signal" if row.get("signal_coords") else None,
                     },
                 )
         store.finish_run(run_id, status="ok",

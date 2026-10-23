@@ -31,13 +31,19 @@ def snap(store: Store) -> dict:
         companies = cur.fetchall()
         idx = _index(companies)
 
-        cur.execute("SELECT place_key, operator, city FROM premises_scores")
+        cur.execute("SELECT company_key, place_key, operator, city, location_basis"
+                    " FROM premises_scores")
         premises = cur.fetchall()
 
     stats = {"premises": len(premises), "companies": len(companies), "snapped": 0,
              "city_only": 0}
     updates = []
     for p in premises:
+        if (p["location_basis"] or "") == "signal":
+            # The evidence carried exact coordinates; never move a registry point
+            # to a company address.
+            stats["signal_placed"] = stats.get("signal_placed", 0) + 1
+            continue
         op = (p["operator"] or "").strip()
         city = (p["city"] or "").strip()
         if not op or op.startswith("Laadplein "):
@@ -57,15 +63,16 @@ def snap(store: Store) -> dict:
             same = [c for c in cands if (c["city"] or "").strip().lower() == city.lower()]
             cands = same or cands
         best = cands[0]
-        updates.append((best["lon"], best["lat"], "premises", best["company_id"], p["place_key"]))
+        updates.append((best["lon"], best["lat"], "premises", best["company_id"],
+                        p["company_key"], p["place_key"]))
         stats["snapped"] += 1
 
     with store.tx() as cur:
-        for lon, lat, basis, company_id, place_key in updates:
+        for lon, lat, basis, company_id, company_key, place_key in updates:
             cur.execute(
                 """UPDATE premises_scores
                       SET lon = %s, lat = %s, location_basis = %s, company_id = %s
-                    WHERE place_key = %s""",
-                (lon, lat, basis, company_id, place_key),
+                    WHERE company_key = %s AND place_key = %s""",
+                (lon, lat, basis, company_id, company_key, place_key),
             )
     return stats

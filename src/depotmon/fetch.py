@@ -47,6 +47,23 @@ class FetchResult:
         return json.loads(self.content)
 
 
+def _maybe_gunzip(body: bytes, content_type: str | None) -> bytes:
+    """Decompress a gzip-encoded body.
+
+    Some publishers serve a gzip FILE under a .gz URL (e.g. the NDW open-data
+    dump). httpx only transparently decompresses when the server sets
+    Content-Encoding: gzip; a .gz file served as application/octet-stream
+    arrives still compressed, and parsing it as UTF-8 JSON blows up with
+    "'utf-8' codec can't decode byte 0x8b" (0x1f 0x8b is the gzip magic).
+    """
+    if body[:2] != b"\x1f\x8b":
+        return body
+    try:
+        return gzip.decompress(body)
+    except OSError:
+        return body
+
+
 class Fetcher:
     """Rate-limited, retrying, archiving HTTP client."""
 
@@ -170,7 +187,7 @@ class Fetcher:
                     time.sleep(2 ** (attempt + 1))
                     continue
                 ctype = resp.headers.get("content-type")
-                body = resp.content
+                body = _maybe_gunzip(resp.content, ctype)
                 digest, rel = self._archive(body, url, ctype)
                 if self.store is not None:
                     self.store.record_raw(

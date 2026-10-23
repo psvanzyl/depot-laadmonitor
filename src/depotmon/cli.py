@@ -20,6 +20,7 @@ INGESTS = {
     "news": ("depotmon.ingest.news", "run"),
     "ndw": ("depotmon.ingest.ndw", "run"),
     "osm": ("depotmon.ingest.osm", "run"),
+    "osm_companies": ("depotmon.ingest.osm_companies", "run"),
     "rdw": ("depotmon.ingest.rdw", "run"),
     "cbs": ("depotmon.ingest.cbs", "run"),
     "ocm": ("depotmon.ingest.ocm", "run"),
@@ -52,6 +53,8 @@ def cmd_ingest(store: Store, settings, args) -> None:
             kwargs = {}
             if name == "permits":
                 kwargs["days"] = args.days
+                if getattr(args, "max_records", None):
+                    kwargs["max_records"] = args.max_records
             if name == "rdw":
                 kwargs["months"] = args.months or settings.rdw_months
                 kwargs["refresh"] = args.refresh
@@ -75,8 +78,16 @@ def cmd_classify(store: Store, settings, args) -> None:
 def cmd_score(store: Store, settings, args) -> None:
     """Stack evidence per business premises -> tier A/B/C (private sites only)."""
     from .classify import premises
+    from .resolve.postcodes import fill_missing_places
 
+    try:
+        # A bare postcode is a coordinate, not a lead: name it before ranking.
+        filled = fill_missing_places(store, settings)
+    except Exception as exc:  # enrichment must never block scoring
+        log.warning("postcode enrichment failed: %s", exc)
+        filled = 0
     result = premises.run(store, settings)
+    result["counts"]["places_filled"] = filled
     print(json.dumps(result["counts"], indent=2))
     for row in result["premises"][: args.limit]:
         print(f"[{row['tier']}] {row['score']:.2f}  {row['operator']} "
@@ -165,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     pi = sub.add_parser("ingest", help="run one or all ingesters")
     pi.add_argument("source", choices=[*INGESTS, "all"])
     pi.add_argument("--days", type=int, default=None)
+    pi.add_argument("--max-records", dest="max_records", type=int, default=None)
     pi.add_argument("--months", type=int, default=None)
     pi.add_argument("--refresh", action="store_true")
 

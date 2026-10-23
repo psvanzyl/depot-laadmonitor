@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from ..config import Settings
@@ -74,6 +74,15 @@ def build(store: Store, settings: Settings, *, week: str | None = None) -> dict:
                ORDER BY c.change_id DESC LIMIT 200"""
         )
         changes = list(cur.fetchall())
+        cur.execute(
+            """SELECT company_key, operator, city, postcode, address, tier, score,
+                      channels, reasons, power_kw, hgv_capable, evidence,
+                      first_seen_at, last_seen_at
+                 FROM premises_scores
+                WHERE tier IS NOT NULL
+                ORDER BY score DESC, operator"""
+        )
+        private = [dict(r) for r in cur.fetchall()]
 
     # --- aggregates ------------------------------------------------------
     by_status: dict[str, int] = {}
@@ -117,6 +126,40 @@ def build(store: Store, settings: Settings, *, week: str | None = None) -> dict:
         f"Gegenereerd {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "
         f"peildatum {today.isoformat()} · {len(sites)} actieve locaties"
     )
+    lines.append("")
+    # --- private depot premises (the actual product) ----------------------
+    week_start = today - timedelta(days=7)
+    fresh = [r for r in private if (r.get("first_seen_at") or today) >= week_start]
+    lines.append("## Nieuwe private laallocaties deze week")
+    lines.append("")
+    if fresh:
+        lines.append(_table(
+            ["Tier", "Score", "Bedrijf / locatie", "Plaats", "Postcode", "kW", "Bewijs"],
+            [[r["tier"], f"{float(r['score']):.2f}", r["operator"] or r["company_key"],
+              r["city"] or "?", r["postcode"] or "?", _fmt(r["power_kw"]),
+              str(len(r["evidence"] or []))] for r in fresh],
+        ))
+    else:
+        lines.append("_Geen nieuwe private locaties deze week._")
+    lines.append("")
+    lines.append("## Private laallocaties — top 15 (alle tiers)")
+    lines.append("")
+    lines.append(_table(
+        ["Tier", "Score", "Bedrijf / locatie", "Plaats", "Postcode", "kW", "Eerste signaal"],
+        [[r["tier"], f"{float(r['score']):.2f}", r["operator"] or r["company_key"],
+          r["city"] or "?", r["postcode"] or "?", _fmt(r["power_kw"]),
+          str(r["first_seen_at"] or "?")] for r in private[:15]],
+    ))
+    lines.append("")
+    lines.append("### Bewijs per locatie")
+    lines.append("")
+    for r in private[:15]:
+        lines.append(f"- **{r['operator'] or r['company_key']}** ({r['postcode'] or '?'} "
+                     f"{r['city'] or ''}) — tier {r['tier']}, score {float(r['score']):.2f}")
+        for note in (r["reasons"] or []):
+            lines.append(f"  - {note}")
+        for ev in (r["evidence"] or [])[:6]:
+            lines.append(f"  - {ev.get('kind')}: [{ev.get('url') or 'geen url'}]({ev.get('url') or ''})")
     lines.append("")
     lines.append("## Kerncijfers")
     lines.append("")
@@ -301,6 +344,14 @@ def build(store: Store, settings: Settings, *, week: str | None = None) -> dict:
         "new": len(new_sites),
         "changed": len(status_changes),
         "removed": len(removed),
+        "private_premises": {
+            "total": len(private),
+            "new_this_week": len([r for r in private
+                                  if (r.get("first_seen_at") or today) >= today - timedelta(days=7)]),
+            "by_tier": {
+                t: len([r for r in private if r["tier"] == t]) for t in ("A", "B", "C")
+            },
+        },
         "markdown": str(md_path),
         "csv": str(csv_path),
         "geojson": str(geojson_path),

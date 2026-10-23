@@ -73,8 +73,9 @@ class Settings:
     permit_lookback_days: int = field(
         default_factory=lambda: _int("PERMIT_LOOKBACK_DAYS", 10)
     )
+    # 400 truncated a 24-month backfill (10,210 records) without telling anyone.
     permit_max_records: int = field(
-        default_factory=lambda: _int("PERMIT_MAX_RECORDS", 400)
+        default_factory=lambda: _int("PERMIT_MAX_RECORDS", 20000)
     )
     permit_fetch_docs: bool = field(
         default_factory=lambda: _bool("PERMIT_FETCH_DOCS", True)
@@ -90,7 +91,12 @@ class Settings:
                 "NEWS_FEEDS",
                 "https://www.ttm.nl/feed/,"
                 "https://www.nieuwsbladtransport.nl/feed/,"
-                "https://www.automotive-online.nl/feed/",
+                "https://www.automotive-online.nl/feed/,"
+                "https://www.tankpro.nl/feed/,"
+                "https://www.wattisduurzaam.nl/feed/,"
+                "https://www.change.inc/rss,"
+                "https://www.schuttevaer.nl/rss,"
+                "https://www.binnenvaartkrant.nl/feed/",
             ).split(",")
             if f.strip()
         )

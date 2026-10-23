@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 from typing import Any
@@ -22,8 +23,13 @@ SRU_URL = "https://repository.overheid.nl/sru"
 
 SEARCH_TERMS = (
     "laadplein laadplekken laadinfrastructuur laadstation snellader megawattlader "
-    "vrachtwagenlaadplein laadhub"
+    "vrachtwagenlaadplein laadhub laadvoorziening laadplaats laadpunt oplaadstation"
 )
+
+# Gemeenteblad, Staatscourant, Provinciaal blad, Waterschapsblad carry site decisions.
+# kst/blg/hnd/stb are Kamerstukken, bijlagen, handelingen and tractaten: ~half of every
+# hit list, and structurally incapable of naming a private depot.
+PUB_TYPE_RE = re.compile(r"^(gmb|stc|prb|wsb)-", re.IGNORECASE)
 
 # A charging site is only evidence when the publication is about a decision/permit.
 PERMIT_SEMANTICS = re.compile(
@@ -40,6 +46,57 @@ CHARGE_RE = re.compile(
     r"elektrische?\s+(?:vrachtauto|vrachtwagen|truck|bestelbus|voertuigen)",
     re.IGNORECASE,
 )
+
+
+# "V E R K E E R S B E S L U I T" is still a verkeersbesluit — a decision about the
+# public road, i.e. the opposite of a depot behind a gate.
+_SPACED_CAPS = re.compile(r"(?<=\b[A-Z])\s+(?=[A-Z]\b)")
+PUBLIC_ROAD_RE = re.compile(
+    r"verkeersbesluit|reserveren van parkeerplaats|parkeerplaatsen voor (?:het )?opladen|"
+    r"parkeren voor het opladen|openbare laadplaats|blauwe zone",
+    re.IGNORECASE,
+)
+
+# street + number, optional comma, postcode, place — anchored on the postcode, which is
+# the only part of a Dutch address that is unambiguous in prose.
+SITE_RE = re.compile(
+    r"([A-Z][\w\.\-']*(?:\s+[A-Za-z0-9\.\-']+){0,4}\s+\d{1,4}[a-zA-Z]?)"
+    r"\s*,?\s*(\d{4}\s?[A-Z]{2})\s+([A-Z][a-z\u00e0-\u00ff\-]{2,})"
+)
+ADDR_NOISE = re.compile(
+    r"\s+(?:het college|burgemeester|inge?komen|kenmerk|gemeente|aangevraagde|kennisgeving|"
+    r"ontwerp|besluit|zaaknummer|postbus|namens|de aanvraag|hierbij)\b.*$",
+    re.IGNORECASE,
+)
+
+
+def tidy_caps(text: str) -> str:
+    """Collapse spaced-out capitals so keyword checks survive typesetting games."""
+    return _SPACED_CAPS.sub("", text)
+
+
+def site_address(body: str) -> tuple[str | None, str | None, str | None]:
+    """(address, postcode, city) for the first plausible site address in the body."""
+    for m in SITE_RE.finditer(body):
+        street, pc, place = m.group(1), m.group(2).replace(" ", ""), m.group(3)
+        # a PO box is the objections desk, not the site
+        before = body[max(0, m.start() - 40):m.start()].lower()
+        if "postbus" in before or "antwoordnummer" in before:
+            continue
+        street = street.strip(" ,;:")
+        # "Maastricht Rekoutweg 14" -> "Rekoutweg 14" (the place was swallowed)
+        head = street.split()
+        if place and len(head) > 1 and head[0].lower() == place.lower():
+            street = " ".join(head[1:])
+        street = re.sub(r"^(?:aan de|aan|op de|op|locatie|adres)\s+", "", street, flags=re.I)
+        # administrative addresses are the desk that handles objections, not the depot
+        if re.match(r"(postbus|antwoordnummer|t\.?a\.?v\.?|commissie|afdeling|team|p/a)\b",
+                    street, re.IGNORECASE):
+            continue
+        if not re.match(r"[A-Z]", street) or len(street) > 60:
+            continue
+        return street, pc, place
+    return None, None, None
 
 
 def plausible_company(cand: str | None) -> str | None:
@@ -83,16 +140,22 @@ def _collect(record: ET.Element) -> dict[str, Any]:
     return out
 
 
-def build_query(since: date) -> str:
-    return (
+def build_query(since: date, until: date | None = None) -> str:
+    q = (
         'c.product-area=="officielepublicaties"'
         f' AND cql.textAndIndexes any "{SEARCH_TERMS}"'
         f" AND dt.modified>={since.isoformat()}"
     )
+    # SRU refuses to page past startRecord=10000, so long backfills must be cut into
+    # windows (a month of charging hits is well under a thousand records).
+    if until:
+        q += f" AND dt.modified<{until.isoformat()}"
+    return q
 
 
 def search(fetcher: Fetcher, settings: Settings, since: date,
-           max_records: int | None = None) -> tuple[list[dict], int]:
+           max_records: int | None = None,
+           until: date | None = None) -> tuple[list[dict], int]:
     """Return (records, total_available)."""
     limit = max_records or settings.permit_max_records
     records: list[dict] = []
@@ -100,16 +163,24 @@ def search(fetcher: Fetcher, settings: Settings, since: date,
     start = 1
     page = 100
     while len(records) < limit:
-        resp = fetcher.get(
-            SRU_URL,
-            params={
-                "query": build_query(since),
-                "maximumRecords": min(page, limit - len(records)),
-                "startRecord": start,
-            },
-        )
-        if resp.status != 200:
-            raise RuntimeError(f"SRU HTTP {resp.status}")
+        # SRU retry: KOOP answers 500/504 under load or past deep startRecord.
+        # Retry with a growing pause before giving up on the whole month window.
+        resp = None
+        for attempt in range(1, 4):
+            resp = fetcher.get(
+                SRU_URL,
+                params={
+                    "query": build_query(since, until),
+                    "maximumRecords": min(page, limit - len(records)),
+                    "startRecord": start,
+                },
+            )
+            if resp.status == 200:
+                break
+            if resp.status in (429, 500, 502, 503, 504) and attempt < 3:
+                time.sleep(5 * attempt)
+                continue
+            raise RuntimeError(f"SRU HTTP {resp.status} (startRecord={start})")
         root = ET.fromstring(resp.content)
         total_txt = next(
             (t for t in (_text_of(e) for e in root.iter() if _localname(e.tag) == "numberOfRecords")),
@@ -123,6 +194,9 @@ def search(fetcher: Fetcher, settings: Settings, since: date,
         for rec in page_records:
             fields = _collect(rec)
             flat = {k: v[0] for k, v in fields.items()}
+            ident = flat.get("identifier") or ""
+            if not PUB_TYPE_RE.match(ident):
+                continue
             xml_url = None
             for e in rec.iter():
                 if _localname(e.tag) == "itemUrl" and e.get("manifestation") == "xml":
@@ -142,6 +216,30 @@ DOC_TYPE_NOISE = re.compile(
 )
 
 
+
+def worth_fetching(rec: dict) -> bool:
+    """Metadata is a reliable summary for gmb/stc/prb/wsb notices — use it before fetching.
+
+    The 24-month backfill is ~10k records; fetching every XML would be both slow and rude,
+    so a document is fetched only when its title/abstract could plausibly describe a depot.
+    Errs towards fetching: no abstract means we cannot judge, so we look.
+    """
+    f = rec.get("fields") or {}
+    meta = tidy_caps(f"{f.get('title') or ''} {f.get('abstract') or ''}")
+    if not meta.strip():
+        return False
+    if PUBLIC_ROAD_RE.search(meta):
+        return False
+    if DOC_TYPE_NOISE.search(meta):
+        return False
+    if CHARGE_RE.search(meta):
+        return True
+    if not (f.get("abstract") or "").strip():
+        # title-only metadata: a permit word is reason enough to look at the body
+        return bool(PERMIT_SEMANTICS.search(meta))
+    return False
+
+
 def normalise_document(rec: dict, fetched_text: str | None,
                        doc_url: str | None) -> dict | None:
     """Turn one SRU record (+ optional full text) into a signal dict, or None."""
@@ -152,11 +250,11 @@ def normalise_document(rec: dict, fetched_text: str | None,
     modified = f.get("modified") or f.get("available") or ""
 
     body = fetched_text or title
-    relevant, kw = tu.is_relevant(body)
-    if not relevant and fetched_text is not None:
-        # title-only noise (policy docs) is dropped unless the body qualified
-        return None
-    if not relevant:
+    # Hints only: the shared is_relevant() vocabulary is narrower than permit language,
+    # so its verdict must never gate this channel (it silently dropped 157 of 160).
+    _, kw = tu.is_relevant(body)
+    # Policy programmes are 100k+ characters of prose, never a site notice.
+    if len(body) > 60_000:
         return None
 
     if not CHARGE_RE.search(body):
@@ -170,30 +268,29 @@ def normalise_document(rec: dict, fetched_text: str | None,
         return None
     # A verkeersbesluit is about the public road (reserved parking bays), never a
     # depot behind a gate — the opposite of what this monitor collects.
-    if re.search(r"verkeersbesluit", f"{title} {body[:300]}", re.IGNORECASE):
+    if PUBLIC_ROAD_RE.search(tidy_caps(f"{title} {body[:400]}")):
         return None
 
-    postcode = tu.extract_postcode(body)
-    address = tu.extract_address(body, postcode)
-    if address:
-        address = re.sub(r"^(?:met als adres|op locatie|locatie|adres)\s*:?\s*", "",
-                         address, flags=re.IGNORECASE).strip(" ,.;:")
-        # a PO box is the objections desk, not the site
-        if re.search(r"postbus|antwoordnummer", address, re.IGNORECASE):
-            address = None
-    city = None
-    m = re.search(r"\b\d{4}\s?[A-Z]{2}\s+([A-Z][a-zà-ÿ'\-]{2,})", body)
-    if m and m.group(1).lower() not in CITY_STOP:
-        city = m.group(1)
-    else:
-        m = re.search(r"\bin\s+([A-Z][a-zà-ÿ'\-]{2,})\s*[,.]", body)
-        if m and m.group(1).lower() not in CITY_STOP:
-            city = m.group(1)
+    address, postcode, city = site_address(body)
+    if address is None:
+        # An address we cannot anchor to a postcode is worse than no address: the
+        # postcode alone still identifies the premises.
+        postcode = tu.extract_postcode(body)
+        if postcode:
+            m = re.search(rf"{postcode[:4]}\s?{postcode[4:]}", body)
+            if m:
+                head = body[max(0, m.start() - 60):m.start()].lower()
+                if "postbus" in head or "antwoordnummer" in head:
+                    postcode = None
+
     if address is None and postcode is None:
         return None
     power_kw, power_raw = tu.extract_power_kw(body)
     applicant = plausible_company(tu.extract_applicant(body))
     status = tu.status_from_text(body, doc_type)
+    if re.search(r"ontwerpbesluit|ontwerp-?besluit|voorgenomen besluit", tidy_caps(title),
+                 re.IGNORECASE):
+        status = "rumoured"
     if status == "rumoured" and DOC_TYPE_NOISE.search(doc_type or title):
         # policy documents are not sites; only keep them if they carry an address
         if not address:
@@ -261,24 +358,29 @@ SRU_EXEMPT = {
 
 
 def run(store: Store, settings: Settings, *, days: int | None = None,
-        fetch_docs: bool | None = None) -> dict:
-    """Ingest permit notices modified in the last `days` days."""
+        fetch_docs: bool | None = None, max_records: int | None = None,
+        since: date | None = None, until: date | None = None) -> dict:
+    """Ingest permit notices modified in [since, until) — or the last `days` days."""
     lookback = days or settings.permit_lookback_days
     fetch_docs = settings.permit_fetch_docs if fetch_docs is None else fetch_docs
-    since = date.today() - timedelta(days=lookback)
+    since = since or date.today() - timedelta(days=lookback)
     run_id = store.start_run("ingest", "permits")
     stats = {"records": 0, "relevant": 0, "new": 0, "updated": 0, "unchanged": 0,
-             "docs_fetched": 0, "skipped": 0}
+             "docs_fetched": 0, "skipped": 0, "prescreened": 0}
     try:
         with Fetcher(
             settings, store=store, run_id=run_id, source="permits",
             robots_exempt=SRU_EXEMPT if settings.sru_enabled else None,
         ) as fetcher:
-            records, total = search(fetcher, settings, since)
+            records, total = search(fetcher, settings, since,
+                                    max_records=max_records, until=until)
             stats["records"] = len(records)
             stats["total_available"] = total
             for rec in records:
                 body = None
+                if fetch_docs and rec["xml_url"] and not worth_fetching(rec):
+                    stats["prescreened"] = stats.get("prescreened", 0) + 1
+                    continue
                 if fetch_docs and rec["xml_url"]:
                     try:
                         doc = fetcher.get(rec["xml_url"])

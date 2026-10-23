@@ -24,10 +24,17 @@ from ..fetch import Fetcher
 from ..store import Store, as_json
 
 # Publisher-owned feeds (verified live 2026-10-22). Extend via NEWS_FEEDS.
+# Every feed below was probed live (HTTP 200 + parseable + publisher-owned). Candidates
+# that failed are recorded in SOURCES.md rather than silently retried every run.
 DEFAULT_FEEDS = (
     "https://www.ttm.nl/feed/",
     "https://www.nieuwsbladtransport.nl/feed/",
     "https://www.automotive-online.nl/feed/",
+    "https://www.tankpro.nl/feed/",
+    "https://www.wattisduurzaam.nl/feed/",
+    "https://www.change.inc/rss",
+    "https://www.schuttevaer.nl/rss",
+    "https://www.binnenvaartkrant.nl/feed/",
 )
 
 ATOM = "{http://www.w3.org/2005/Atom}"

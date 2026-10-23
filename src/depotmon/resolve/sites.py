@@ -231,7 +231,7 @@ def _match_or_create(store: Store, existing: list[dict], merge: dict,
         cur.execute(
             """SELECT site_id FROM sites
                WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(%s,%s),28992), 100)
-                  OR (%s IS NOT NULL AND bag_id = %s)
+                  OR (%s::text IS NOT NULL AND bag_id = %s::text)
                ORDER BY ST_Distance(geom, ST_SetSRID(ST_MakePoint(%s,%s),28992))
                LIMIT 1""",
             (centroid[0], centroid[1], merge.get("bag_id"), merge.get("bag_id"),

@@ -20,6 +20,7 @@ ndw (public CPO network — used as counter-evidence only).
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 
 from .. import news_extract as nx
@@ -62,6 +63,14 @@ COUNTER = {"ndw": 0.80}
 
 # A public hub is not a depot: same treatment as a public charge point.
 PUBLIC_ACCESS_PENALTY = 0.80
+
+# A "laadplein" with no company attached is a shared/public plaza, not a private depot.
+# Boss's product is depot chargers on company yards, so these become leads, not finds.
+ANON_PLAZA_PENALTY = 0.55
+PLAZA_RE = re.compile(
+    r"laadplein|laadplek|laadhub|oplaadplein|charging\s+plaza|laadstation\s+openbaar",
+    re.I,
+)
 
 TIER_A = 0.85
 TIER_B = 0.60
@@ -139,9 +148,28 @@ def score_evidence(items: list[dict]) -> dict:
         score *= 1.0 - PUBLIC_ACCESS_PENALTY
         reasons.append("counter: public laadplein/hub — not a private depot site")
 
+    if not any(it.get("operator") for it in items):
+        blob = " ".join(
+            f"{it.get('name') or ''} {it.get('text_excerpt') or ''}" for it in items
+        )
+        if PLAZA_RE.search(blob):
+            score *= ANON_PLAZA_PENALTY
+            reasons.append(
+                "counter: anoniem laadplein zonder bedrijfsnaam — vermoedelijk openbaar"
+            )
+
     located = any((it.get("postcode") or it.get("address")) for it in items)
     if located:
         score = min(score + 0.04, 0.96)
+
+    # An anonymous premises is a place, not a company. It cannot be a verified
+    # depot site (tier A/B) — a permit with only a street address is a lead.
+    named = any((it.get("operator") or "").strip() for it in items)
+    if not named:
+        score = min(score, 0.55)
+        reasons.append(
+            "no_company_name: geen bedrijfsnaam in het bewijs — alleen locatie bekend"
+        )
 
     if score >= TIER_A and located:
         tier = "A"
@@ -154,8 +182,8 @@ def score_evidence(items: list[dict]) -> dict:
 
     max_capable = any(it.get("hgv_capable") for it in items)
     if tier and not max_capable:
-        tier = "C"
-        reasons.append("no HGV evidence — capped at C")
+        # A depot lead does not have to be truck-rated; say so instead of capping.
+        reasons.append("note: no HGV/truck wording found — may be a van or company-car site")
 
     return {
         "score": round(score, 3),

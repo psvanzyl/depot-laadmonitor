@@ -88,6 +88,82 @@ def is_truck_relevant(text: str) -> bool:
     return any(w in low for w in TRUCK_WORDS)
 
 
+_ALLOWED_LOWER = {
+    "van", "der", "de", "den", "het", "en", "te", "aan", "op", "bij", "voor", "met",
+    "in", "of", "the", "of", "&", "bv", "b.v.", "nv", "n.v.", "holding", "group",
+    "groep", "logistics", "logistiek", "transport", "international", "nederland",
+}
+
+
+REGION_PAREN = re.compile(
+    r"\((?:[^)]*(?:noord|zuid|oost|west|amerika|europa|afrika|azi[ëe]|midden-oosten)[^)]*)\)",
+    re.IGNORECASE,
+)
+
+
+_STOP_OPERATORS = {
+    "na", "oude", "nieuwe", "de", "het", "een", "ook", "maar", "en", "dan",
+    "dit", "dat", "deze", "er", "nu", "hier", "daar", "meer", "meest", "eerste",
+    "tweede", "derde", "grootste", "eerste", "dit", "zijn", "wordt", "kan",
+}
+
+# Place names, not regions/continents/headline tails.
+_REGION_WORDS = re.compile(
+    r"^(?:noord|zuid|oost|west)?-?(?:amerika|europa|afrika|azi[\u00ebe]|"
+    r"midden-oosten|nederland|benelux)$",
+    re.IGNORECASE,
+)
+
+
+def plausible_city(city: str | None) -> bool:
+    """A Dutch place name, not a leftover fragment like '?' or 'Noord-Amerika'."""
+    if not city:
+        return False
+    c = city.strip(" -–—,.;:")
+    if not (2 < len(c) <= 40):
+        return False
+    if any(ch in c for ch in "?:;!\u2018\u2019\"()"):
+        return False
+    if not c[0].isupper():
+        return False
+    if _REGION_WORDS.match(c):
+        return False
+    return True
+
+
+def plausible_operator(name: str | None) -> bool:
+    """A company name, not a headline fragment.
+
+    Headline fragments ("Nederlands stel (Afrika)", "Changemaker X: 'In de
+    toekomst...'") poison the premises score: they invent a site that does not
+    exist and bury the real names. So: no sentence punctuation, at most six
+    words, and every word capitalised unless it is a known connector.
+    """
+    if not name:
+        return False
+    s = name.strip()
+    if not (2 < len(s) <= 55):
+        return False
+    if any(ch in s for ch in ":;!?\u2018\u2019\u201c\u201d\""):
+        return False
+    # "Na Total (Noord-Amerika)" and friends: a headline tail about a region,
+    # not a company with a yard in the Netherlands.
+    if REGION_PAREN.search(s):
+        return False
+    words = s.split()
+    if len(words) > 6:
+        return False
+    if len(words) == 1 and s.strip(".,").lower() in _STOP_OPERATORS:
+        return False
+    for w in words:
+        core = w.strip("()[],.")
+        if not core or core.lower() in _ALLOWED_LOWER:
+            continue
+        if core[0].islower():
+            return False
+    return True
+
+
 def extract_operator(title: str, body: str = "") -> str | None:
     """Company name from a headline such as 'Hartog & Bikker neemt ...'."""
     m = _VERB_RE.search(title)
@@ -97,7 +173,7 @@ def extract_operator(title: str, body: str = "") -> str | None:
     # "Albert Heijn, SVZ en Tielbeke strijden om ..." -> take the first named company
     if "," in head:
         head = head.split(",")[0].strip()
-    if 2 < len(head) < 90 and head.lower() not in _STOP_HEAD:
+    if plausible_operator(head) and head.lower() not in _STOP_HEAD:
         return head
     # fallback: legal-form or sector suffix anywhere in title/body
     m = re.search(
@@ -106,7 +182,9 @@ def extract_operator(title: str, body: str = "") -> str | None:
         title + " " + body[:800],
     )
     if m:
-        return m.group(1).strip(" ,.;:-")
+        cand = m.group(1).strip(" ,.;:-")
+        if plausible_operator(cand):
+            return cand
     return None
 
 
@@ -117,7 +195,7 @@ def extract_city(title: str, body: str = "") -> str | None:
             cand = m.group(1).strip()
             if cand.lower() in _PLACE_NOT:
                 continue
-            if len(cand) < 3:
+            if not plausible_city(cand):
                 continue
             return cand
     return None

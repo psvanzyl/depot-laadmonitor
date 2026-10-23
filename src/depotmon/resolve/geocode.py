@@ -20,9 +20,8 @@ FIELDS = (
 )
 
 
-def _norm(query: str) -> str:
-    q = re.sub(r"\s+", " ", query.strip().lower())
-    return q
+def _norm(query: str | None) -> str:
+    return re.sub(r"\s+", " ", (query or "").strip().lower())
 
 
 def _point(centroide: str | None) -> tuple[float, float] | None:
@@ -38,6 +37,8 @@ def geocode(fetcher: Fetcher, store: Store, query: str,
             postcode: str | None = None) -> dict | None:
     """Return {lon, lat, precision, payload} or None. Results are cached in geo_cache."""
     q = _norm(query)
+    if not q:
+        return None  # city-only or empty signals must not abort the batch
     key = hashlib.sha256(q.encode()).hexdigest()
     with store.conn.cursor() as cur:
         cur.execute("SELECT * FROM geo_cache WHERE input_hash=%s", (key,))
@@ -126,6 +127,9 @@ def build_query(address: str | None, postcode: str | None, city: str | None) -> 
         return address
     if postcode:
         return postcode
+    # City-only signals still get a map point (PDOK resolves the place centroid).
+    if city:
+        return city
     return None
 
 
@@ -151,7 +155,10 @@ def enrich_signals(store: Store, settings: Settings, *, limit: int = 400) -> dic
                 if not query:
                     stats["failed"] += 1
                     continue
-                res = geocode(fetcher, store, query, row["postcode"])
+                try:
+                    res = geocode(fetcher, store, query, row["postcode"])
+                except Exception:  # noqa: BLE001 — one bad address must not stop the batch
+                    res = None
                 if res is None:
                     stats["failed"] += 1
                     continue

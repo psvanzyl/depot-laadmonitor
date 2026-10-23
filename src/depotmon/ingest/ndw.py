@@ -62,7 +62,10 @@ def normalise(feature: dict) -> dict | None:
     power = _power_kw(props)
     if power is None:
         return None
-    oid = str(props.get("id") or "")
+    # The NDW open-data dump puts the unique id at the FEATURE top level
+    # ("NL-<CPO>-<uuid>"); properties only carry "cpo_id" (the operator code).
+    # Reading properties["id"] silently dropped every single feature.
+    oid = str(feature.get("id") or props.get("id") or "")
     if not oid:
         return None
     access = "public" if props.get("open") else "unknown"

@@ -218,3 +218,33 @@ drop the only lawful channel that names private depot construction, so the host 
 
 If KOOP ever objects, flip `SRU_ENABLED=false`; the permit channel disappears cleanly and
 news remains. Everything else in the pipeline still obeys robots.txt.
+
+## Archive harvest + recall baseline (2026-10-22)
+
+The RSS channel sees weeks, not years; Dutch trade press keeps its depot announcements in
+publisher sitemaps. `ingest/archive.py` reads only publisher-owned sitemaps, filters URLs by
+slug before fetching (about 1% of URLs match charging vocabulary), and caches each article
+in `raw_payloads`.
+
+Live sitemaps confirmed by probe (HTTP 200 + robots.txt permits reading):
+  ttm               https://www.ttm.nl/sitemap_index.xml        (50 children)
+  nieuwsbladtransport https://www.nt.nl/sitemap.xml             (Crawl-Delay 1, honoured)
+  automotive-online  https://www.automotive-online.nl/sitemap.xml
+  wattisduurzaam     https://www.wattisduurzaam.nl/sitemap_index.xml
+  change.inc         https://www.change.inc/sitemap_index.xml
+  schuttevaer        https://www.schuttevaer.nl/sitemap.xml
+
+Feeds probed and rejected (dead, HTML, or no charging vocabulary on the feed):
+logistiek.nl, transport-online.nl, consultancy.nl, energiepodium.nl, evnieuws.nl,
+duurzaambedrijfsleven.nl, laadpalen.nl, emissievrijvervoer.nl, transportmedia.be,
+mobilityenergy.com, evupdate.nl, vrachtwagens.nl, techzine.nl.
+
+## Recall baseline (measured, not estimated)
+
+`scripts/recall_check.py` tests 38 private depots that certainly exist (AH, Jumbo, Picnic,
+PostNL, DHL, GLS, DPD, Coolblue, bol.com, Lidl, Aldi, Sligro, Vos, Nabuurs, Gubbels,
+Heisterkamp, Jan de Rijk, Simon Loos, HSF, Neele-Vat, Kuehne+Nagel, DSV, Rhenus, Schenker,
+UPS, FedEx …). Result at 2026-10-22: 3/38 found (Albert Heijn Zaandam, Hartog & Bikker
+Zoeterwoude, Oegema Apeldoorn). 8% recall — the honest state of the pipeline: it reports
+*events* well and *inventory* badly. Every MISSING name is a target for the company-first
+crawl, not a mystery.

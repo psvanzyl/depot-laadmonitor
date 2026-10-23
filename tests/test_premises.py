@@ -54,9 +54,11 @@ def test_correlated_items_do_not_stack_linearly():
     assert many["score"] - one["score"] <= 0.08
 
 
-def test_non_hgv_is_capped():
+def test_non_hgv_keeps_tier_but_is_flagged():
+    """A company-car depot is still a private site: note it, do not bury it."""
     v = premises.score_evidence([
         _item("news", "operational", hgv_capable=False),
         _item("permit", "permit_granted", hgv_capable=False),
     ])
-    assert v["tier"] == "C"
+    assert v["tier"] in {"A", "B"}
+    assert any("HGV" in r for r in v["reasons"])

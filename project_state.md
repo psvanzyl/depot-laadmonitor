@@ -103,3 +103,46 @@ evidence with per-row provenance. Public charge points are counter-evidence only
   but it makes the daily cycle exit non-zero.
 - The geocoder hammers PDOK with `400 Bad Request` on tight bboxes — noisy but it completes.
 - No git remote configured; the repo is local-only on CT141 (`main`, HEAD df1ac57).
+
+## 2026-10-23 (later) — the first scheduled run exposed why the gates matter
+
+The timers had never fired, so the daily cycle had never actually run end to end.
+Running it once produced a WORSE map than the hand-curated state, which is the
+useful finding: every manual step in this project was load-bearing.
+
+### What the first real cycle did
+- Ingest pulled 909 news signals (was 9) and 1,105 NDW counter-evidence points.
+- Score then produced 519 premises rows with headline fragments as operators —
+  "Staatssecretaris Vivianne Heijnen", "Tankstation", "VIDEO" — several of them
+  plotted on the public map. Car-review junk was back, exactly as the original
+  purge_junk.py note predicted.
+- Address-level precision fell 125 -> 40 while signal-level rose 37 -> 168: the
+  newly ingested news carries no address, so those rows land at city level.
+
+### Fixed
+- `scripts/daily_cycle.sh` now runs `daily` -> `purge_junk` -> `attach_companies`
+  -> `snap_companies` -> `score` -> `export_map`. Scoring AFTER the gates is the
+  invariant; scoring before them publishes junk.
+- `news_extract.plausible_operator` gained `_TITLE_WORDS` (staatssecretaris,
+  wethouder, directeur, ...) and `_GENERIC_NOUNS` (tankstation, laadplein,
+  distributiecentrum, ...). Both classes were passing the old rules because they
+  are short, capitalised and punctuation-free.
+- Result after re-running the gates: 204 findings (A1/B26/C177), 100 without
+  coordinates, 104 plotted, 18,109 kW where power is known.
+
+### Still open (real, not cosmetic)
+- News signals have no address extraction (441 of 451 have no geometry), so a
+  news-originated finding can never reach address precision. Permit signals all
+  have geometry (193/193) and are the only path to a proven (A) site.
+- `bag_pand_id` gets HTTP 400 from the BAG OGC endpoint on every call, so no
+  premise ever gets a bag_id — which also means `attach` attaches nothing
+  (attached 0, ambiguous 15) and `snap` places only 49 of 308.
+- Foreign junk survives (Volvo Goteborg, Mercedes Munchen, Brakes). They export
+  with no coordinates so they do not plot, but they inflate the count.
+
+### Security note (unchanged by this work, worth acting on)
+`depotmon-db` publishes Postgres on `0.0.0.0:5433` with POSTGRES_PASSWORD equal to
+the username (`depotmon`) — the docker-compose default. Reachable from the whole
+LAN. Not changed here because rotating it while the daily job was mid-run would
+have broken the ingest; recommended fix is an `.env` with a real password plus
+binding the port to `127.0.0.1:5433`.

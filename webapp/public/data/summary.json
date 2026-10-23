@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-10-23T21:27:36+00:00",
+  "sites": {
+    "total": 2357,
+    "scored": 2532,
+    "withoutCoords": 175,
+    "byTier": {
+      "A": 1701,
+      "B": 55,
+      "C": 601
+    },
+    "hgv": 2083,
+    "byAccess": {
+      "public": 2021,
+      "semi_public": 65,
+      "private": 104,
+      "unknown": 167
+    }
+  },
+  "power": {
+    "totalKw": 699132.7,
+    "sitesWithKw": 2239
+  },
+  "byProvince": {
+    "Onbekend": 1778,
+    "Zuid-Holland": 106,
+    "Noord-Holland": 88,
+    "Noord-Brabant": 87,
+    "Gelderland": 65,
+    "Overijssel": 56,
+    "Utrecht": 55,
+    "Limburg": 41,
+    "Fryslân": 19,
+    "Drenthe": 18,
+    "Groningen": 16,
+    "Flevoland": 15,
+    "Zeeland": 13
+  },
+  "byChannel": {
+    "etrucker": 1654,
+    "depotcharge": 240,
+    "chargepoint": 176,
+    "osm": 168,
+    "news": 88,
+    "permit": 51
+  },
+  "precision": {
+    "premises": 2273,
+    "signal": 9,
+    "address": 75
+  },
+  "sources": {
+    "permits": "KOOP SRU 2.0 — Officiële Bekendmakingen (gemeente-/provinciaal blad, Staatscourant)",
+    "news": "publisher RSS + sitemap-archief (TTM, Nieuwsblad Transport, Tankpro, WattisDuurzaam, Change.inc, Schuttevaer)",
+    "geocoding": "PDOK Locatieserver",
+    "counterEvidence": "NDW laadpuntenregister — tegenbewijs voor een privaat depot op dezelfde locatie; HDV-capabele punten (>= 350 kW of truckrating) tellen als publieke laadlocatie",
+    "accessTaxonomy": "Publiek / semi-publiek / privaat volgens RVO Dashboard Laadinfrastructuur (dashboardklimaatbeleid.nl)"
+  }
+}

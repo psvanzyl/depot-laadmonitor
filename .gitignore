@@ -2,7 +2,7 @@
 .venv
 __pycache__
 *.pyc
-data
+/data   # project-local snapshots only; webapp/public/data ships
 .env
 .pytest_cache
 .ruff_cache

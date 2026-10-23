@@ -1,0 +1,25 @@
+{
+  "radiusM": 500,
+  "rings": 1558,
+  "ringsHgv": 1285,
+  "areaKm2Hgv": 867.5,
+  "companiesTotal": 8177,
+  "companiesCovered": {
+    "500m": 270,
+    "2km": 1599,
+    "5km": 4047
+  },
+  "pctCovered500m": 3.3,
+  "pctCovered5km": 49.5,
+  "companiesCoveredAllSites": {
+    "500m": 358,
+    "2000m": 2046,
+    "5000m": 5005
+  },
+  "trucksTotal": null,
+  "companiesPerCharger5km": 3.1,
+  "chargersHgvNow": 1285,
+  "chargersNeeded": 2597,
+  "assumption": "Chargers needed assumes a new 500 m ring reaches as many companies as the average existing HGV charger does (density assumption, not a measurement).",
+  "method": "Companies counted when their own point falls inside a 500 m / 2 km / 5 km ring around a site."
+}

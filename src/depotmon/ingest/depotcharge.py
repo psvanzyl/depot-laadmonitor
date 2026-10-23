@@ -113,12 +113,17 @@ def normalise(row: dict, chargepoints: list[dict], fleet_url: str) -> dict | Non
     # reason to think a truck could charge there: an explicit truck rating, a
     # private yard, or enough power to matter. This drops the planned public
     # fillers that carry no connectors at all.
-    has_plan = bool(loc.get("plannedChargePoints"))
+    # Count the connectors the location row itself declares. The chargepoint
+    # detail is only fetched per country as it is needed, so "no connectors in
+    # the detail" must not be read as "no hardware" — but a row that declares
+    # zero connectors and no power is an announcement, not a site. That keeps the
+    # foreign public hubs while still dropping the planned filler rows.
+    declared = int(row.get("connectorsCount") or 0)
     if not (
         hgv
-        or access in ("private", "public", "semi_public")
+        or declared > 0
         or (power or 0) >= MIN_TRUCK_KW
-        or has_plan
+        or access == "private"
     ):
         return None
 

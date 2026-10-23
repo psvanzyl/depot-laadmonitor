@@ -50,10 +50,17 @@ def test_nl_private_truck_site_is_operational_and_hgv():
     assert sig["doc_url"] == FLEET
 
 
-def test_foreign_site_is_skipped():
+def test_foreign_site_is_kept_and_labelled():
+    """The feed is multi-country now: a German site belongs on the map.
+
+    This used to assert the opposite. The map covers DE/CH/ES/IT/AT/LU/LI, so the
+    test asserts what ships: kept, with an ISO-2 country for the UI.
+    """
     loc = _loc()
     loc["location"]["address"]["country"] = "Deutschland"
-    assert normalise(loc, _cp(), FLEET) is None
+    sig = normalise(loc, _cp(), FLEET)
+    assert sig is not None
+    assert sig["country"] == "DE"
 
 
 def test_dutch_alias_spelling_is_kept():
@@ -63,8 +70,13 @@ def test_dutch_alias_spelling_is_kept():
 
 
 def test_planned_public_site_without_connectors_is_dropped():
-    """The 49 filler rows from Local Green Energy must not enter the map."""
+    """The 49 filler rows from Local Green Energy must not enter the map.
+
+    Still dropped after the multi-country change: the gate now keys on the
+    declared connector count, and these rows declare zero.
+    """
     loc = _loc(operationalStatus="PLANNED", accessType="PUBLIC")
+    loc["connectorsCount"] = 0  # these rows declare no hardware at all
     assert normalise(loc, [], FLEET) is None
 
 

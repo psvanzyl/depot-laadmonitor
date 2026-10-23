@@ -107,6 +107,26 @@ _STOP_OPERATORS = {
     "tweede", "derde", "grootste", "eerste", "dit", "zijn", "wordt", "kan",
 }
 
+# A person's job title opening a name means a person, not a company. A headline
+# about "Staatssecretaris Vivianne Heijnen" produced a map marker with no yard.
+_TITLE_WORDS = {
+    "staatssecretaris", "minister", "ministerie", "wethouder", "gedeputeerde",
+    "burgemeester", "commissaris", "voorzitter", "directeur", "directrice",
+    "ceo", "cfo", "cto", "coo", "manager", "professor", "prof", "dr", "ir",
+    "mr", "drs", "koning", "koningin", "prins", "prinses", "raadslid",
+    "woordvoerder", "bestuursvoorzitter", "oprichter", "eigenaar",
+}
+
+# Generic nouns that describe a type of place, never a specific company.
+_GENERIC_NOUNS = {
+    "tankstation", "tankstations", "laadpunt", "laadpunten", "laadplein",
+    "laadplekken", "laadstation", "snellader", "snellaadstation", "depot",
+    "distributiecentrum", "distributiecentra", "warehouse", "bedrijf",
+    "bedrijven", "locatie", "locaties", "vestiging", "opslag", "terminal",
+    "logistiek", "transport", "vervoerder", "wagenpark", "vrachtwagen",
+    "bestelbus", "vrachtwagens", "laadinfrastructuur", "laadoplossing",
+}
+
 # Place names, not regions/continents/headline tails.
 _REGION_WORDS = re.compile(
     r"^(?:noord|zuid|oost|west)?-?(?:amerika|europa|afrika|azi[\u00ebe]|"
@@ -154,6 +174,12 @@ def plausible_operator(name: str | None) -> bool:
     if len(words) > 6:
         return False
     if len(words) == 1 and s.strip(".,").lower() in _STOP_OPERATORS:
+        return False
+    first = words[0].strip("()[],.").lower()
+    if first in _TITLE_WORDS:
+        return False
+    low = {w.strip("()[],.").lower() for w in words}
+    if len(words) <= 2 and low <= (_GENERIC_NOUNS | _ALLOWED_LOWER | {"de", "het", "een"}):
         return False
     for w in words:
         core = w.strip("()[],.")

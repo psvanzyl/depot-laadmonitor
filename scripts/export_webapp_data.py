@@ -240,6 +240,10 @@ def main() -> None:
         "NLD": "NL", "DEU": "DE", "BEL": "BE", "AUT": "AT", "CHE": "CH",
         "ESP": "ES", "ITA": "IT", "LUX": "LU", "LIE": "LI", "FRA": "FR",
         "DNK": "DK", "POL": "PL", "CZE": "CZ", "SWE": "SE", "NOR": "NO",
+        "FIN": "FI", "PRT": "PT", "IRL": "IE", "GBR": "GB", "EST": "EE",
+        "LVA": "LV", "LTU": "LT", "ROU": "RO", "BGR": "BG", "GRC": "GR",
+        "SVK": "SK", "SVN": "SI", "HRV": "HR", "HUN": "HU", "SRB": "RS",
+        "ISL": "IS",
     }
     for feat in features:
         props = feat["properties"]

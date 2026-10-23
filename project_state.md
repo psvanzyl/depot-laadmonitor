@@ -449,3 +449,6 @@ visibility before capturing.
 - Per-connector truck ratings for the foreign sites still need an authenticated
   pull (Bitwarden unlock was declined); until then they are power proxies or
   `none`, never `rated`.
+
+## Sources
+eTrucker HDV locations: see ps_etrucker.md (Firestore snapshot, anonymous read).

@@ -37,6 +37,9 @@ const BASEMAP_STYLE: maplibregl.StyleSpecification = {
 interface Props {
   depots: Depots | null;
   companies?: Companies;
+  coverage?: { type: string; features: unknown[] } | null;
+  showCoverage?: boolean;
+  countries?: string[] | null;
   showCompanies?: boolean;
   minKw?: number;
   tiers: Tier[];
@@ -87,6 +90,9 @@ function popupHtml(p: Record<string, unknown>): string {
 
 export default function MapView({
   depots,
+  coverage,
+  showCoverage = false,
+  countries,
   companies = null,
   showCompanies = true,
   minKw = 0,
@@ -239,6 +245,48 @@ export default function MapView({
     else map.once("load", ensure);
   }, [depots]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 500 m coverage rings. Added under the depot dots so the site markers stay
+  // readable, and toggled by visibility instead of being removed and re-added.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !coverage) return;
+    const ensure = () => {
+      if (map.getSource("coverage")) return;
+      map.addSource("coverage", { type: "geojson", data: coverage as never });
+      const before = map.getLayer("depots") ? "depots" : undefined;
+      map.addLayer(
+        {
+          id: "coverage",
+          type: "fill",
+          source: "coverage",
+          paint: { "fill-color": "#f59e0b", "fill-opacity": 0.14 },
+        },
+        before,
+      );
+      map.addLayer(
+        {
+          id: "coverage-line",
+          type: "line",
+          source: "coverage",
+          paint: { "line-color": "#b45309", "line-width": 0.8, "line-opacity": 0.55 },
+        },
+        before,
+      );
+    };
+    if (map.isStyleLoaded()) ensure();
+    else map.once("load", ensure);
+  }, [coverage]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const id of ["coverage", "coverage-line"]) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", showCoverage ? "visible" : "none");
+      }
+    }
+  }, [showCoverage, coverage]);
+
   // Tier, HGV, power and access filters are client-side, so the chips work without a rebuild.
   useEffect(() => {
     const map = mapRef.current;
@@ -248,8 +296,12 @@ export default function MapView({
     filters.push(["in", ["coalesce", ["get", "accessClass"], "unknown"], ["literal", access]]);
     if (hgvOnly) filters.push(["==", ["get", "hgv"], true]);
     if (minKw > 0) filters.push([">=", ["coalesce", ["get", "powerKw"], 0], minKw]);
+    // Country selection from the sidebar; no selection means every country.
+    if (countries) {
+      filters.push(["in", ["coalesce", ["get", "country"], "?"], ["literal", countries]]);
+    }
     map.setFilter("depots", ["all", ...filters] as never);
-  }, [tiers, access, hgvOnly, minKw, depots]);
+  }, [tiers, access, hgvOnly, minKw, countries, depots]);
 
   useEffect(() => {
     const map = mapRef.current;

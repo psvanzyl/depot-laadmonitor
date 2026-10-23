@@ -61,6 +61,9 @@ WEIGHTS: dict[str, dict[str, float]] = {
     # mention because it is the operator's own published data, but a "planned"
     # site is still only a plan.
     "depotcharge": {"operational": 0.90, "planned": 0.52, "unknown": 0.45},
+    # eTrucker: an operator-side statement that a truck fits (dedicated bay, drive-through,
+    # trailer access, N2/N3, MCS). Exact coordinates and per-connector power.
+    "etrucker": {"operational": 0.88, "planned": 0.50, "unknown": 0.45},
 }
 
 # Counter-evidence: the site is part of the public charge network, i.e. not our product.
@@ -261,7 +264,7 @@ SELECT signal_id, source, kind, name, operator, address, postcode, city, power_k
 FROM signals
 WHERE last_seen >= now() - interval '730 days'
   AND (operator IS NOT NULL OR postcode IS NOT NULL OR address IS NOT NULL)
-  AND kind IN ('news', 'permit', 'osm', 'ndw', 'chargepoint', 'subsidy', 'depotcharge')
+  AND kind IN ('news', 'permit', 'osm', 'ndw', 'chargepoint', 'subsidy', 'depotcharge', 'etrucker')
 """
 
 

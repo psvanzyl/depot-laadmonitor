@@ -44,6 +44,14 @@ class Settings:
     )
     # Depotcharge has no API and must not be polled, so the ingest reads a
     # snapshot captured from an authenticated browser session.
+    etrucker_dir: Path = field(
+        default_factory=lambda: Path(os.environ.get("ETRUCKER_DIR", "/data/etrucker"))
+    )
+    etrucker_source_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "ETRUCKER_SOURCE_URL", "https://etrucker.io"
+        )
+    )
     depotcharge_dir: Path = field(
         default_factory=lambda: Path(os.environ.get("DEPOTCHARGE_DIR", "/data/depotcharge"))
     )

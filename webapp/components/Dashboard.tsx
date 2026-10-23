@@ -2,21 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { DexLogo } from "@/components/DexLogo";
+import { MapBoundary } from "@/components/MapBoundary";
+import { LANGS, isLang, makeT, type Lang } from "@/lib/i18n";
 import {
-  ACCESS_HINT,
-  ACCESS_LABEL,
-  CHANNEL_LABEL,
   TIER_COLOR,
-  TIER_HINT,
-  TIER_LABEL,
   type AccessClass,
   type Depots,
   type Summary,
   type Tier,
 } from "@/lib/types";
 
-
-// Foreign rows carry a country, not a Dutch province. Used for the region table.
 const COUNTRY_NAME: Record<string, string> = {
   NL: "Nederland",
   DE: "Duitsland",
@@ -27,6 +23,26 @@ const COUNTRY_NAME: Record<string, string> = {
   BE: "België",
   LU: "Luxemburg",
   LI: "Liechtenstein",
+  FR: "Frankrijk",
+  DK: "Denemarken",
+  SE: "Zweden",
+  NO: "Noorwegen",
+  FI: "Finland",
+  PL: "Polen",
+  CZ: "Tsjechië",
+  SK: "Slowakije",
+  HU: "Hongarije",
+  SI: "Slovenië",
+  HR: "Kroatië",
+  IE: "Ierland",
+  GB: "Verenigd Koninkrijk",
+  EE: "Estland",
+  LV: "Letland",
+  LT: "Litouwen",
+  RO: "Roemenië",
+  BG: "Bulgarije",
+  GR: "Griekenland",
+  PT: "Portugal",
 };
 
 const MapView = dynamic(() => import("@/components/MapView"), {
@@ -38,25 +54,65 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
-const nf = new Intl.NumberFormat("nl-NL");
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const dataUrl = (file: string) => `${BASE_PATH}/data/${file}`;
 const ALL_TIERS: Tier[] = ["A", "B", "C"];
 const ALL_ACCESS: AccessClass[] = ["public", "semi_public", "private", "unknown"];
 const accessOf = (p: { accessClass?: AccessClass }): AccessClass =>
   p.accessClass ?? "unknown";
+const POWER_STEPS = [0, 50, 150, 350];
+
+type Coverage = {
+  radiusM: number;
+  ringsHgv: number;
+  areaKm2Hgv: number;
+  companiesTotal: number;
+  companiesCovered: { "500m": number; "2km": number; "5km": number };
+  pctCovered500m: number | null;
+  pctCovered5km: number | null;
+  chargersHgvNow: number;
+  chargersNeeded: number | null;
+  assumption: string;
+};
 
 export default function Dashboard() {
+  const [lang, setLang] = useState<Lang>("nl");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [depots, setDepots] = useState<Depots | null>(null);
+  const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [coverageGeo, setCoverageGeo] = useState<{ type: string; features: unknown[] } | null>(null);
+  const [showCoverage, setShowCoverage] = useState(false);
   const [tiers, setTiers] = useState<Tier[]>(ALL_TIERS);
   const [access, setAccess] = useState<AccessClass[]>(ALL_ACCESS);
+  const [countries, setCountries] = useState<string[] | null>(null);
   const [hgvOnly, setHgvOnly] = useState(false);
   const [companies, setCompanies] = useState<{ type: "FeatureCollection"; features: unknown[] } | null>(null);
   const [showCompanies, setShowCompanies] = useState(true);
   const [minKw, setMinKw] = useState(0);
   const [focus, setFocus] = useState<{ id: string; lon: number; lat: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Language: URL first (so a shared link wins), then localStorage.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("lang");
+    const stored = window.localStorage.getItem("dex-lang");
+    const next = isLang(fromUrl) ? fromUrl : isLang(stored) ? stored : "nl";
+    setLang(next);
+  }, []);
+
+  const changeLang = (next: Lang) => {
+    setLang(next);
+    window.localStorage.setItem("dex-lang", next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("lang", next);
+    window.history.replaceState({}, "", url);
+  };
+
+  const t = useMemo(() => makeT(lang), [lang]);
+  const nf = useMemo(
+    () => new Intl.NumberFormat(lang === "nl" ? "nl-NL" : lang === "de" ? "de-DE" : lang === "fr" ? "fr-FR" : "en-GB"),
+    [lang],
+  );
 
   useEffect(() => {
     fetch(dataUrl("summary.json"))
@@ -66,7 +122,15 @@ export default function Dashboard() {
     fetch(dataUrl("companies.geojson"))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`companies ${r.status}`))))
       .then((d) => setCompanies(d))
-      .catch(() => setCompanies(null)); // base layer is optional context, not an error
+      .catch(() => setCompanies(null));
+    fetch(dataUrl("coverage.json"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`coverage ${r.status}`))))
+      .then((d: Coverage) => setCoverage(d))
+      .catch(() => setCoverage(null));
+    fetch(dataUrl("coverage.geojson"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`rings ${r.status}`))))
+      .then((d) => setCoverageGeo(d))
+      .catch(() => setCoverageGeo(null));
     fetch(dataUrl("depots.geojson"))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`depots ${r.status}`))))
       .then((d: Depots) => setDepots(d))
@@ -74,6 +138,16 @@ export default function Dashboard() {
   }, []);
 
   const all = depots?.features ?? [];
+
+  const countryCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const f of all) {
+      const cc = f.properties.country || "?";
+      c[cc] = (c[cc] ?? 0) + 1;
+    }
+    return Object.entries(c).sort((a, b) => b[1] - a[1]);
+  }, [all]);
+
   const visible = useMemo(
     () =>
       all
@@ -81,12 +155,13 @@ export default function Dashboard() {
         .filter((f) => access.includes(accessOf(f.properties)))
         .filter((f) => (hgvOnly ? f.properties.hgv : true))
         .filter((f) => (minKw > 0 ? (f.properties.powerKw ?? 0) >= minKw : true))
+        .filter((f) => (countries ? countries.includes(f.properties.country || "?") : true))
         .sort(
           (a, b) =>
             "ABC".indexOf(a.properties.tier) - "ABC".indexOf(b.properties.tier) ||
             b.properties.score - a.properties.score,
         ),
-    [all, tiers, access, hgvOnly, minKw],
+    [all, tiers, access, hgvOnly, minKw, countries],
   );
 
   const tierCounts = useMemo(() => {
@@ -96,52 +171,73 @@ export default function Dashboard() {
   }, [all]);
 
   const accessCounts = useMemo(() => {
-    const c: Record<AccessClass, number> = {
-      public: 0,
-      semi_public: 0,
-      private: 0,
-      unknown: 0,
-    };
+    const c: Record<AccessClass, number> = { public: 0, semi_public: 0, private: 0, unknown: 0 };
     for (const f of all) c[accessOf(f.properties)] += 1;
     return c;
   }, [all]);
 
   const kwVisible = visible.reduce((s, f) => s + (f.properties.powerKw ?? 0), 0);
-  const provinces = useMemo(() => {
+
+  const regions = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of visible) {
-      // Foreign rows have no Dutch province. Bucketing them all as "Onbekend"
-      // hid 300+ sites in one meaningless bar, so fall back to the country.
       const cc = f.properties.country;
       const p =
         f.properties.province ||
         (cc && cc !== "NL" ? COUNTRY_NAME[cc] ?? cc : "Onbekend");
       c[p] = (c[p] ?? 0) + 1;
     }
-    return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [visible]);
 
-  const toggleTier = (t: Tier) =>
-    setTiers((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+  const toggleTier = (x: Tier) =>
+    setTiers((cur) => (cur.includes(x) ? cur.filter((y) => y !== x) : [...cur, x]));
+  const toggleAccess = (x: AccessClass) =>
+    setAccess((cur) => (cur.includes(x) ? cur.filter((y) => y !== x) : [...cur, x]));
+  const toggleCountry = (cc: string) => {
+    const base = countries ?? countryCounts.map(([k]) => k);
+    setCountries(base.includes(cc) ? base.filter((y) => y !== cc) : [...base, cc]);
+  };
+  const countryOn = (cc: string) => (countries ? countries.includes(cc) : true);
 
-  const toggleAccess = (a: AccessClass) =>
-    setAccess((cur) => (cur.includes(a) ? cur.filter((x) => x !== a) : [...cur, a]));
+  const accessText = (a: AccessClass) =>
+    ({
+      public: t("accessPublic"),
+      semi_public: t("accessSemi"),
+      private: t("accessPrivate"),
+      unknown: t("accessUnknown"),
+    })[a];
+  const tierText = (x: Tier) =>
+    ({ A: t("tierA"), B: t("tierB"), C: t("tierC") })[x];
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col">
       <header className="bg-white border-b border-slate-200 shadow-sm z-20">
         <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h1 className="text-lg font-bold text-slate-900 whitespace-nowrap">
-            <span className="text-amber-600">⚡</span> Laadlocaties zwaar vervoer
-          </h1>
-          <p className="text-xs text-slate-500 hidden md:block">
-            Publieke, semi-publieke en private laadlocaties voor zwaar vervoer
-          </p>
-          {summary && (
-            <span className="text-[11px] text-slate-400 ml-auto">
-              data: {new Date(summary.generatedAt).toLocaleString("nl-NL")}
-            </span>
-          )}
+          <DexLogo />
+          <p className="text-xs text-slate-500 hidden md:block">{t("tagline")}</p>
+          <div className="ml-auto flex items-center gap-3">
+            {summary && (
+              <span className="text-[11px] text-slate-400 hidden sm:block">
+                {t("dataAt")}: {new Date(summary.generatedAt).toLocaleString(lang)}
+              </span>
+            )}
+            <label className="sr-only" htmlFor="lang">
+              {t("langLabel")}
+            </label>
+            <select
+              id="lang"
+              value={lang}
+              onChange={(e) => changeLang(e.target.value as Lang)}
+              className="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-700"
+            >
+              {LANGS.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </header>
 
@@ -152,80 +248,124 @@ export default function Dashboard() {
               {depots ? nf.format(visible.length) : "…"}
             </div>
             <p className="text-sm text-slate-600">
-              laadlocaties met bewijs, van {nf.format(all.length)} gescoorde
-              locaties.
+              {t("sitesWithEvidence")} {nf.format(all.length)} {t("scoredSites")}
             </p>
             <p className="text-xs text-slate-500">
-              {nf.format(Math.round(kwVisible))} kW opgeteld bij de locaties waar een
-              vermogen bekend is — nooit geschat.
+              {nf.format(Math.round(kwVisible))} {t("kwSummed")}
             </p>
           </section>
 
+          {coverage && (
+            <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  {t("coverageTitle")} {coverage.radiusM} m
+                </h2>
+                <button
+                  onClick={() => setShowCoverage((v) => !v)}
+                  title={t("coverageHint")}
+                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    showCoverage
+                      ? "bg-amber-600 border-amber-600 text-white"
+                      : "bg-white border-amber-300 text-amber-700 hover:border-amber-500"
+                  }`}
+                >
+                  {showCoverage ? "aan" : "uit"}
+                </button>
+              </div>
+              <dl className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <dt className="text-slate-500">{t("within500")}</dt>
+                  <dd className="text-lg font-bold text-slate-800 tabular-nums">
+                    {coverage.pctCovered500m?.toFixed(1)}%
+                  </dd>
+                  <dd className="text-[11px] text-slate-400 tabular-nums">
+                    {nf.format(coverage.companiesCovered["500m"])} / {nf.format(coverage.companiesTotal)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">{t("within5km")}</dt>
+                  <dd className="text-lg font-bold text-slate-800 tabular-nums">
+                    {coverage.pctCovered5km?.toFixed(1)}%
+                  </dd>
+                  <dd className="text-[11px] text-slate-400 tabular-nums">
+                    {nf.format(coverage.companiesCovered["5km"])} / {nf.format(coverage.companiesTotal)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">{t("chargersNow")}</dt>
+                  <dd className="text-lg font-bold text-slate-800 tabular-nums">
+                    {nf.format(coverage.chargersHgvNow)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">{t("chargersNeeded")}</dt>
+                  <dd className="text-lg font-bold text-amber-700 tabular-nums">
+                    {coverage.chargersNeeded ? nf.format(coverage.chargersNeeded) : "—"}
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-[11px] leading-snug text-slate-400">
+                {nf.format(coverage.ringsHgv)} {t("ringsShown")} · {nf.format(coverage.areaKm2Hgv)} km² ·{" "}
+                {t("assumption")}
+              </p>
+            </section>
+          )}
+
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Zekerheid
+              {t("certainty")}
             </h2>
             <div className="flex flex-wrap gap-2">
-              {ALL_TIERS.map((t) => {
-                const on = tiers.includes(t);
+              {ALL_TIERS.map((x) => {
+                const on = tiers.includes(x);
                 return (
                   <button
-                    key={t}
-                    onClick={() => toggleTier(t)}
-                    title={TIER_HINT[t]}
+                    key={x}
+                    onClick={() => toggleTier(x)}
+                    title={t(`tierHint${x}`)}
                     className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                       on
                         ? "text-white border-transparent"
                         : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
                     }`}
-                    style={on ? { backgroundColor: TIER_COLOR[t] } : undefined}
+                    style={on ? { backgroundColor: TIER_COLOR[x] } : undefined}
                   >
-                    {t} · {nf.format(tierCounts[t])}
+                    {x} · {nf.format(tierCounts[x])}
                   </button>
                 );
               })}
               <button
                 onClick={() => setHgvOnly((v) => !v)}
-                title="Alleen locaties waar het bewijs vrachtwagens noemt"
+                title={t("hgvHint")}
                 className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                   hgvOnly
                     ? "bg-slate-900 border-slate-900 text-white"
                     : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
                 }`}
               >
-                HGV
+                {t("hgv")}
               </button>
               <button
                 onClick={() => setShowCompanies((v) => !v)}
-                title="Toon alle transportbedrijven (basislaag) onder de vondsten"
+                title={t("companiesHint")}
                 className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                   showCompanies
                     ? "bg-teal-700 border-teal-700 text-white"
                     : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
                 }`}
               >
-                Bedrijven
-              </button>
-              <button
-                onClick={() => setMinKw((v) => (v === 0 ? 50 : 0))}
-                title="Alleen locaties met een bekend vermogen van 50 kW of meer"
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
-                  minKw > 0
-                    ? "bg-slate-900 border-slate-900 text-white"
-                    : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
-                }`}
-              >
-                50+ kW
+                {t("companies")}
               </button>
             </div>
             <div className="space-y-1 pt-1">
-              {ALL_TIERS.map((t) => (
-                <p key={t} className="text-[11px] leading-snug text-slate-500">
+              {ALL_TIERS.map((x) => (
+                <p key={x} className="text-[11px] leading-snug text-slate-500">
                   <span
                     className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle"
-                    style={{ backgroundColor: TIER_COLOR[t] }}
+                    style={{ backgroundColor: TIER_COLOR[x] }}
                   />
-                  <strong className="text-slate-700">{TIER_LABEL[t]}</strong> — {TIER_HINT[t]}
+                  <strong className="text-slate-700">{tierText(x)}</strong> — {t(`tierHint${x}`)}
                 </p>
               ))}
             </div>
@@ -233,7 +373,38 @@ export default function Dashboard() {
 
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Toegang
+              {t("country")}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setCountries(null)}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                  countries === null
+                    ? "bg-slate-900 border-slate-900 text-white"
+                    : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                }`}
+              >
+                {t("allCountries")}
+              </button>
+              {countryCounts.slice(0, 14).map(([cc, n]) => (
+                <button
+                  key={cc}
+                  onClick={() => toggleCountry(cc)}
+                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    countryOn(cc)
+                      ? "bg-white border-amber-400 text-slate-700"
+                      : "bg-slate-100 border-slate-200 text-slate-400 line-through"
+                  }`}
+                >
+                  {COUNTRY_NAME[cc] ?? cc} · {nf.format(n)}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {t("access")}
             </h2>
             <div className="flex flex-wrap gap-2">
               {ALL_ACCESS.map((a) => {
@@ -242,23 +413,44 @@ export default function Dashboard() {
                   <button
                     key={a}
                     onClick={() => toggleAccess(a)}
-                    title={ACCESS_HINT[a]}
+                    title={t(`accessHint${a === "semi_public" ? "Semi" : a === "public" ? "Public" : a === "private" ? "Private" : "Unknown"}`)}
                     className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                       on
                         ? "bg-slate-900 border-slate-900 text-white"
                         : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
                     }`}
                   >
-                    {ACCESS_LABEL[a]} · {nf.format(accessCounts[a])}
+                    {accessText(a)} · {nf.format(accessCounts[a])}
                   </button>
                 );
               })}
             </div>
           </section>
 
+          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {t("power")}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {POWER_STEPS.map((step) => (
+                <button
+                  key={step}
+                  onClick={() => setMinKw(step)}
+                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    minKw === step
+                      ? "bg-slate-900 border-slate-900 text-white"
+                      : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                  }`}
+                >
+                  {step === 0 ? `${t("power")}: −` : `${step}+ kW`}
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="bg-white rounded-xl border border-slate-200 p-4">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-              Locaties ({nf.format(visible.length)})
+              {t("sites")} ({nf.format(visible.length)})
             </h2>
             <ul className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto -mx-1">
               {visible.slice(0, 150).map((f) => {
@@ -283,15 +475,16 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-500 pl-4 truncate">
-                        {p.city || p.postcode || "plaats onbekend"}
+                        {p.city || p.postcode || t("noPlace")}
                         {p.powerKw ? ` · ${nf.format(p.powerKw)} kW` : ""}
                         {(p as { locationBasis?: string }).locationBasis === "city"
-                          ? " · bij benadering"
+                          ? ` · ${t("approx")}`
                           : ""}
                         {p.hgv ? " · HGV" : ""}
-                        {accessOf(p) === "unknown" ? "" : ` · ${ACCESS_LABEL[accessOf(p)]}`}
+                        {accessOf(p) === "unknown" ? "" : ` · ${accessText(accessOf(p))}`}
                         {" · "}
-                        {p.evidenceCount} bron{p.evidenceCount === 1 ? "" : "nen"}
+                        {p.evidenceCount}{" "}
+                        {p.evidenceCount === 1 ? t("sources") : t("sourcesPlural")}
                       </div>
                     </button>
                   </li>
@@ -300,20 +493,19 @@ export default function Dashboard() {
             </ul>
             {visible.length > 150 && (
               <p className="text-[11px] text-slate-400 mt-2">
-                Eerste 150 van {nf.format(visible.length)} — gebruik de kaart of de
-                zekerheidsfilters om te verfijnen.
+                {t("first150")} {nf.format(visible.length)} — {t("refineHint")}
               </p>
             )}
           </section>
 
-          {provinces.length > 0 && (
+          {regions.length > 0 && (
             <section className="bg-white rounded-xl border border-slate-200 p-4">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                Per provincie / land
+                {t("perRegion")}
               </h2>
               <table className="w-full text-xs">
                 <tbody>
-                  {provinces.map(([name, n]) => (
+                  {regions.map(([name, n]) => (
                     <tr key={name} className="border-t border-slate-100 first:border-0">
                       <td className="py-1.5 text-slate-700">{name}</td>
                       <td className="py-1.5 text-right tabular-nums text-slate-600">
@@ -328,30 +520,31 @@ export default function Dashboard() {
 
           {error && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
-              Fout bij laden: {error}
+              {t("loadError")}: {error}
             </p>
           )}
 
           <p className="text-[11px] leading-relaxed text-slate-400 px-1">
-            Private depotlaadlocaties hebben geen openbaar register; publieke en semi-publieke
-              punten komen uit het landelijke laadpuntenregister. Elke locatie is afgeleid
-            uit indirect bewijs — {Object.values(CHANNEL_LABEL).join(", ")} — en elke rij
-            linkt naar de bron. Publieke laadpleinen worden juist verworpen.
+            {t("footer")}
             {summary?.sites.withoutCoords
-              ? ` ${summary.sites.withoutCoords} locatie(s) konden niet op de kaart (geen coördinaten).`
+              ? ` ${summary.sites.withoutCoords} ${t("noCoords")}`
               : ""}
           </p>
         </aside>
 
         <main className="relative h-[55vh] lg:h-auto flex-1 min-h-[420px]">
+          <MapBoundary message={t("mapUnavailable")}>
           <MapView
             depots={depots}
             companies={companies}
+            coverage={coverageGeo}
+            showCoverage={showCoverage}
             showCompanies={showCompanies}
             minKw={minKw}
             tiers={tiers}
             access={access}
             hgvOnly={hgvOnly}
+            countries={countries}
             focus={focus}
             onSelect={(id) => {
               const f = all.find((x) => x.properties.id === id);
@@ -360,6 +553,7 @@ export default function Dashboard() {
               setFocus({ id, lon, lat });
             }}
           />
+          </MapBoundary>
         </main>
       </div>
     </div>

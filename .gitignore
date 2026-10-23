@@ -17,5 +17,6 @@ webapp/node_modules/
 webapp/.next/
 webapp/tsconfig.tsbuildinfo
 
-# generated map data (rebuilt from the DB by scripts/export_map.sh)
-webapp/public/data/
+# generated map data IS committed: the Coolify image builds from git and needs
+# the latest export baked in. data/etrucker (raw snapshot) stays out.
+data/etrucker/

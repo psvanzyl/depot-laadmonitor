@@ -13,3 +13,4 @@ unset PW
 
 # Depotcharge snapshot lives in the project tree (data/ is gitignored).
 export DEPOTCHARGE_DIR="${DEPOTCHARGE_DIR:-/root/projects/depot-laadmonitor/data/depotcharge}"
+export ETRUCKER_DIR="${ETRUCKER_DIR:-/root/projects/depot-laadmonitor/data/etrucker}"

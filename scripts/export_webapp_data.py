@@ -209,19 +209,20 @@ def main() -> None:
 
     # Label foreign features. Every Depotcharge signal shares one doc_url (the
     # fleet URL), so the per-feature country join returns an arbitrary row. Use
-    # the nearest Depotcharge point instead, and only outside the NL box, so a
-    # Dutch row with an unknown province is never relabelled as German.
+    # the nearest point that declares a country (Depotcharge or eTrucker)
+    # instead, and only outside the NL box, so a Dutch row with an unknown
+    # province is never relabelled as German.
     with store.conn.cursor() as cur:
         cur.execute(
             """SELECT lon, lat, raw_state->>'country' AS c
                  FROM signals
-                WHERE source = 'depotcharge'
+                WHERE source IN ('depotcharge', 'etrucker')
                   AND raw_state->>'country' IS NOT NULL
                   AND lon IS NOT NULL AND lat IS NOT NULL"""
         )
-        dc_points = cur.fetchall()
+        geo_points = cur.fetchall()
 
-    if dc_points:
+    if geo_points:
         for feat in features:
             props = feat["properties"]
             if props.get("province"):
@@ -229,8 +230,26 @@ def main() -> None:
             x, y = feat["geometry"]["coordinates"][:2]
             if 3.2 <= x <= 7.3 and 50.7 <= y <= 53.6:
                 continue
-            best = min(dc_points, key=lambda r: (r["lon"] - x) ** 2 + (r["lat"] - y) ** 2)
+            best = min(geo_points, key=lambda r: (r["lon"] - x) ** 2 + (r["lat"] - y) ** 2)
             props["country"] = best["c"] or ""
+
+    # eTrucker declares ISO-3 (DEU, FRA); the UI labels are ISO-2. Dutch rows with
+    # no province were skipped by the proximity step above, so they kept an empty
+    # country even though they sit inside the NL box.
+    ISO3_TO_ISO2 = {
+        "NLD": "NL", "DEU": "DE", "BEL": "BE", "AUT": "AT", "CHE": "CH",
+        "ESP": "ES", "ITA": "IT", "LUX": "LU", "LIE": "LI", "FRA": "FR",
+        "DNK": "DK", "POL": "PL", "CZE": "CZ", "SWE": "SE", "NOR": "NO",
+    }
+    for feat in features:
+        props = feat["properties"]
+        code = (props.get("country") or "").strip().upper()
+        code = ISO3_TO_ISO2.get(code, code if len(code) == 2 else "")
+        if not code:
+            x, y = feat["geometry"]["coordinates"][:2]
+            if 3.2 <= x <= 7.3 and 50.7 <= y <= 53.6:
+                code = "NL"
+        props["country"] = code
 
     features.sort(key=lambda f: (-TIER_ORDER[f["properties"]["tier"]], -f["properties"]["score"]))
     by_tier = Counter(f["properties"]["tier"] for f in features)

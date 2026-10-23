@@ -25,6 +25,7 @@ INGESTS = {
     "cbs": ("depotmon.ingest.cbs", "run"),
     "ocm": ("depotmon.ingest.ocm", "run"),
     "depotcharge": ("depotmon.ingest.depotcharge", "run"),
+    "etrucker": ("depotmon.ingest.etrucker", "run"),
 }
 
 
@@ -109,7 +110,7 @@ def cmd_report(store: Store, settings, args) -> None:
 def cmd_daily(store: Store, settings, args) -> None:
     """Full scheduled cycle: ingest everything, resolve, classify, diff."""
     summary = {}
-    for name in ["permits", "news", "ndw", "osm", "cbs", "depotcharge"]:
+    for name in ["permits", "news", "ndw", "osm", "cbs", "depotcharge", "etrucker"]:
         try:
             summary[name] = _ingest(store, settings, name)
         except Exception as exc:

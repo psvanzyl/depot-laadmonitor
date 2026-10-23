@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Laadlocaties zwaar vervoer — publiek, semi-publiek en privaat",
+  title: "DepotChargeDex — laadlocaties voor zwaar vervoer in Europa",
   description:
-    "Kaart met publieke, semi-publieke en private laadlocaties voor zwaar vervoer in Nederland. Privaat bewijs uit vergunningen, vakpers en archiefonderzoek; publiek uit het laadpuntenregister. Elke locatie met bron en zekerheidsniveau.",
+    "DepotChargeDex: kaart met publieke, semi-publieke en private laadlocaties voor zwaar vervoer in Europa. Operatorgegevens, vrachtlabels en laadpuntenregister, elk met bron en zekerheidsniveau. Inclusief 500 m-dekkingsanalyse.",
   openGraph: {
-    title: "Depotlaadpalen",
+    title: "DepotChargeDex",
     description:
       "Publieke, semi-publieke en private laadlocaties voor zwaar vervoer — met bewijs per locatie.",
     type: "website",

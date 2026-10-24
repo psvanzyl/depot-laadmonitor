@@ -334,10 +334,16 @@ def run(store: Store, settings: Settings, countries: list[str] | None = None) ->
                 if not _truck_relevant(sig):
                     stats["skipped_car_only"] = stats.get("skipped_car_only", 0) + 1
                     continue
-                # An element can sit in two overlapping boxes. Keep the first
-                # country that claims it, so one site is not counted twice.
-                sig["raw_state"]["country"] = code
-                sig["raw_state"]["countryIso3"] = ISO2_TO_ISO3.get(code, "")
+                # The query box decides WHICH elements to fetch. The polygon
+                # decides WHICH COUNTRY they are in. Overwriting the polygon
+                # answer with the box answer labelled every German site inside
+                # the Austrian box as AT. The polygon wins; the box is only a
+                # fallback for a point no European polygon contains.
+                actual = sig["raw_state"].get("country") or ""
+                if not actual:
+                    actual = code
+                sig["raw_state"]["country"] = actual
+                sig["raw_state"]["countryIso3"] = ISO2_TO_ISO3.get(actual, "")
                 stats["kept"] += 1
                 stats[store.upsert_signal(sig)] += 1
             overall["elements"] += stats["elements"]

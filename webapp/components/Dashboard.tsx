@@ -286,7 +286,7 @@ export default function Dashboard() {
       </header>
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        <aside className="lg:w-[400px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
+        <aside className="order-last lg:order-none lg:w-[400px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-1">
             <div className="text-4xl font-bold text-amber-700 tabular-nums">
               {depots ? nf.format(visible.length) : "…"}
@@ -660,10 +660,12 @@ export default function Dashboard() {
           </p>
         </aside>
 
-        {/* The map is its own scroll block on mobile: the sidebar keeps its own
-            scroll, the map keeps its own, and the page itself does not grow a
-            second scrollbar that traps the filters underneath the map. */}
-        <main className="relative h-[62vh] lg:h-auto lg:flex-1 min-h-[440px]">
+        {/* The map comes FIRST on mobile (order-first), because the sidebar
+            with its filters and the 150-row site list is 2100+ px tall. With
+            the map below it, the map was below the fold on every phone: the
+            filters were reachable by scrolling, but the map itself never was.
+            On desktop the sidebar keeps its place on the left. */}
+        <main className="relative order-first h-[55vh] lg:order-none lg:h-auto lg:flex-1 min-h-[380px]">
           <MapBoundary message={t("mapUnavailable")}>
           <MapView
             depots={depots}

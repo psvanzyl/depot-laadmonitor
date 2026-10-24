@@ -202,7 +202,13 @@ def main() -> None:
         # Density assumption: a new charger reaches as many companies as the
         # average existing HGV charger in that country already reaches.
         per_charger = (covered_5k / chargers_hgv) if chargers_hgv else 0.0
-        needed = math.ceil(comp / per_charger) if per_charger > 0 else None
+        # BOTH a company count and a density are needed before the question
+        # "how many chargers does this country's fleet need" can be answered.
+        # A country with no company layer yet has a density but zero
+        # companies, and ceil(0 / density) = 0, which reads as "nothing
+        # needed". It is not: it is "no data yet". Null, and the UI shows a
+        # dash.
+        needed = math.ceil(comp / per_charger) if (per_charger > 0 and comp > 0) else None
         country_rows.append({
             "country": cc,
             "companies": comp,

@@ -28,6 +28,7 @@ const COUNTRY_NAME: Record<string, string> = {
   SE: "Zweden",
   NO: "Noorwegen",
   FI: "Finland",
+  IS: "IJsland",
   PL: "Polen",
   CZ: "Tsjechië",
   SK: "Slowakije",
@@ -43,6 +44,18 @@ const COUNTRY_NAME: Record<string, string> = {
   BG: "Bulgarije",
   GR: "Griekenland",
   PT: "Portugal",
+  RS: "Servië",
+  BA: "Bosnië-Herzegovina",
+  ME: "Montenegro",
+  MK: "Noord-Macedonië",
+  AL: "Albanië",
+  CY: "Cyprus",
+  MT: "Malta",
+  AD: "Andorra",
+  MC: "Monaco",
+  SM: "San Marino",
+  VA: "Vaticaanstad",
+  XK: "Kosovo",
 };
 
 const MapView = dynamic(() => import("@/components/MapView"), {
@@ -61,9 +74,12 @@ const ALL_ACCESS: AccessClass[] = ["public", "semi_public", "private", "unknown"
 const accessOf = (p: { accessClass?: AccessClass }): AccessClass =>
   p.accessClass ?? "unknown";
 const POWER_STEPS = [0, 50, 150, 350];
+/** Radii the map can draw, the way the pakketpuntenviewer lets you pick one. */
+const RADII = [500, 1000, 2000, 5000];
 
 type Coverage = {
   radiusM: number;
+  rings: number;
   ringsHgv: number;
   areaKm2Hgv: number;
   companiesTotal: number;
@@ -73,6 +89,18 @@ type Coverage = {
   chargersHgvNow: number;
   chargersNeeded: number | null;
   assumption: string;
+  method: string;
+  countries?: {
+    country: string;
+    companies: number;
+    chargers: number;
+    chargersHgv: number;
+    covered500m: number;
+    covered5km: number;
+    pctCovered500m: number | null;
+    pctCovered5km: number | null;
+    chargersNeeded: number | null;
+  }[];
 };
 
 export default function Dashboard() {
@@ -82,6 +110,7 @@ export default function Dashboard() {
   const [coverage, setCoverage] = useState<Coverage | null>(null);
   const [coverageGeo, setCoverageGeo] = useState<{ type: string; features: unknown[] } | null>(null);
   const [showCoverage, setShowCoverage] = useState(false);
+  const [radiusM, setRadiusM] = useState(500);
   const [tiers, setTiers] = useState<Tier[]>(ALL_TIERS);
   const [access, setAccess] = useState<AccessClass[]>(ALL_ACCESS);
   const [countries, setCountries] = useState<string[] | null>(null);
@@ -91,6 +120,7 @@ export default function Dashboard() {
   const [minKw, setMinKw] = useState(0);
   const [focus, setFocus] = useState<{ id: string; lon: number; lat: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAllCountries, setShowAllCountries] = useState(false);
 
   // Language: URL first (so a shared link wins), then localStorage.
   useEffect(() => {
@@ -178,6 +208,7 @@ export default function Dashboard() {
 
   const kwVisible = visible.reduce((s, f) => s + (f.properties.powerKw ?? 0), 0);
 
+  // Region table: Dutch provinces for NL rows, country names for the rest.
   const regions = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of visible) {
@@ -189,6 +220,16 @@ export default function Dashboard() {
     }
     return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [visible]);
+
+  // Per-country fleet estimate, from the coverage export.
+  const countryCoverage = useMemo(() => {
+    const rows = coverage?.countries ?? [];
+    const selected = countries ? new Set(countries) : null;
+    return rows
+      .filter((r) => (selected ? selected.has(r.country) : true))
+      .filter((r) => r.companies > 0 || r.chargersHgv > 0)
+      .slice(0, 30);
+  }, [coverage, countries]);
 
   const toggleTier = (x: Tier) =>
     setTiers((cur) => (cur.includes(x) ? cur.filter((y) => y !== x) : [...cur, x]));
@@ -209,6 +250,9 @@ export default function Dashboard() {
     })[a];
   const tierText = (x: Tier) =>
     ({ A: t("tierA"), B: t("tierB"), C: t("tierC") })[x];
+
+  const countryName = (cc: string) => COUNTRY_NAME[cc] ?? cc;
+  const shownCountries = showAllCountries ? countryCounts : countryCounts.slice(0, 12);
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col">
@@ -242,7 +286,7 @@ export default function Dashboard() {
       </header>
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        <aside className="lg:w-[380px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
+        <aside className="lg:w-[400px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-1">
             <div className="text-4xl font-bold text-amber-700 tabular-nums">
               {depots ? nf.format(visible.length) : "…"}
@@ -256,23 +300,48 @@ export default function Dashboard() {
           </section>
 
           {coverage && (
-            <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-2">
+            <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  {t("coverageTitle")} {coverage.radiusM} m
+                  {t("coverageTitle")}
                 </h2>
                 <button
                   onClick={() => setShowCoverage((v) => !v)}
                   title={t("coverageHint")}
+                  aria-pressed={showCoverage}
                   className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                     showCoverage
                       ? "bg-amber-600 border-amber-600 text-white"
                       : "bg-white border-amber-300 text-amber-700 hover:border-amber-500"
                   }`}
                 >
-                  {showCoverage ? "aan" : "uit"}
+                  {showCoverage ? t("on") : t("off")}
                 </button>
               </div>
+
+              {/* Radius picker, the way the pakketpuntenviewer does it. */}
+              <div className="space-y-1">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  {t("radius")}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {RADII.map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRadiusM(r)}
+                      aria-pressed={radiusM === r}
+                      className={`px-2.5 py-1 rounded-md border text-xs font-medium tabular-nums transition ${
+                        radiusM === r
+                          ? "bg-amber-600 border-amber-600 text-white"
+                          : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                      }`}
+                    >
+                      {r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <dl className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <dt className="text-slate-500">{t("within500")}</dt>
@@ -312,6 +381,48 @@ export default function Dashboard() {
             </section>
           )}
 
+          {/* Per-country fleet estimate: how many chargers each country's
+              fleet needs, based on the density that country's existing
+              chargers already reach. */}
+          {countryCoverage.length > 0 && (
+            <section className="bg-white rounded-xl border border-slate-200 p-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                {t("fleetByCountry")}
+              </h2>
+              <div className="overflow-x-auto -mx-1 px-1">
+                <table className="w-full text-xs min-w-[340px]">
+                  <thead>
+                    <tr className="text-slate-400 border-b border-slate-100">
+                      <th className="text-left font-medium py-1">{t("country")}</th>
+                      <th className="text-right font-medium py-1">{t("chargersNow")}</th>
+                      <th className="text-right font-medium py-1">500 m</th>
+                      <th className="text-right font-medium py-1">{t("chargersNeeded")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {countryCoverage.map((r) => (
+                      <tr key={r.country} className="border-t border-slate-100">
+                        <td className="py-1.5 text-slate-700">{countryName(r.country)}</td>
+                        <td className="py-1.5 text-right tabular-nums text-slate-600">
+                          {nf.format(r.chargersHgv)}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums text-slate-600">
+                          {r.pctCovered500m !== null ? `${r.pctCovered500m}%` : "—"}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums font-semibold text-amber-700">
+                          {r.chargersNeeded !== null ? nf.format(r.chargersNeeded) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] leading-snug text-slate-400 mt-2">
+                {t("fleetByCountryHint")}
+              </p>
+            </section>
+          )}
+
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {t("certainty")}
@@ -338,6 +449,7 @@ export default function Dashboard() {
               <button
                 onClick={() => setHgvOnly((v) => !v)}
                 title={t("hgvHint")}
+                aria-pressed={hgvOnly}
                 className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                   hgvOnly
                     ? "bg-slate-900 border-slate-900 text-white"
@@ -349,6 +461,7 @@ export default function Dashboard() {
               <button
                 onClick={() => setShowCompanies((v) => !v)}
                 title={t("companiesHint")}
+                aria-pressed={showCompanies}
                 className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                   showCompanies
                     ? "bg-teal-700 border-teal-700 text-white"
@@ -371,37 +484,7 @@ export default function Dashboard() {
             </div>
           </section>
 
-          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {t("country")}
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setCountries(null)}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
-                  countries === null
-                    ? "bg-slate-900 border-slate-900 text-white"
-                    : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
-                }`}
-              >
-                {t("allCountries")}
-              </button>
-              {countryCounts.slice(0, 14).map(([cc, n]) => (
-                <button
-                  key={cc}
-                  onClick={() => toggleCountry(cc)}
-                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
-                    countryOn(cc)
-                      ? "bg-white border-amber-400 text-slate-700"
-                      : "bg-slate-100 border-slate-200 text-slate-400 line-through"
-                  }`}
-                >
-                  {COUNTRY_NAME[cc] ?? cc} · {nf.format(n)}
-                </button>
-              ))}
-            </div>
-          </section>
-
+          {/* Access class: private / semi-public / public. */}
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {t("access")}
@@ -414,6 +497,7 @@ export default function Dashboard() {
                     key={a}
                     onClick={() => toggleAccess(a)}
                     title={t(`accessHint${a === "semi_public" ? "Semi" : a === "public" ? "Public" : a === "private" ? "Private" : "Unknown"}`)}
+                    aria-pressed={on}
                     className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                       on
                         ? "bg-slate-900 border-slate-900 text-white"
@@ -427,6 +511,7 @@ export default function Dashboard() {
             </div>
           </section>
 
+          {/* Power in kW. */}
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {t("power")}
@@ -436,6 +521,7 @@ export default function Dashboard() {
                 <button
                   key={step}
                   onClick={() => setMinKw(step)}
+                  aria-pressed={minKw === step}
                   className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
                     minKw === step
                       ? "bg-slate-900 border-slate-900 text-white"
@@ -446,6 +532,48 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
+          </section>
+
+          {/* Country filter. */}
+          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {t("country")}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setCountries(null)}
+                aria-pressed={countries === null}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                  countries === null
+                    ? "bg-slate-900 border-slate-900 text-white"
+                    : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                }`}
+              >
+                {t("allCountries")}
+              </button>
+              {shownCountries.map(([cc, n]) => (
+                <button
+                  key={cc}
+                  onClick={() => toggleCountry(cc)}
+                  aria-pressed={countryOn(cc)}
+                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    countryOn(cc)
+                      ? "bg-white border-amber-400 text-slate-700"
+                      : "bg-slate-100 border-slate-200 text-slate-400 line-through"
+                  }`}
+                >
+                  {countryName(cc)} · {nf.format(n)}
+                </button>
+              ))}
+            </div>
+            {countryCounts.length > 12 && (
+              <button
+                onClick={() => setShowAllCountries((v) => !v)}
+                className="text-[11px] text-amber-700 hover:underline"
+              >
+                {showAllCountries ? t("fewerCountries") : t("moreCountries")}
+              </button>
+            )}
           </section>
 
           <section className="bg-white rounded-xl border border-slate-200 p-4">
@@ -532,13 +660,17 @@ export default function Dashboard() {
           </p>
         </aside>
 
-        <main className="relative h-[55vh] lg:h-auto flex-1 min-h-[420px]">
+        {/* The map is its own scroll block on mobile: the sidebar keeps its own
+            scroll, the map keeps its own, and the page itself does not grow a
+            second scrollbar that traps the filters underneath the map. */}
+        <main className="relative h-[62vh] lg:h-auto lg:flex-1 min-h-[440px]">
           <MapBoundary message={t("mapUnavailable")}>
           <MapView
             depots={depots}
             companies={companies}
             coverage={coverageGeo}
             showCoverage={showCoverage}
+            radiusM={radiusM}
             showCompanies={showCompanies}
             minKw={minKw}
             tiers={tiers}

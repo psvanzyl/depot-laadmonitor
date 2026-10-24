@@ -38,7 +38,7 @@ export function DexLogo({ href = "/", suffix = "Dex", prefix = "DepotCharge" }: 
 }) {
   return (
     <Link href={href} className="group flex items-center gap-2.5">
-      <ChargeMark className="h-9 w-9 transition-transform duration-500 group-hover:rotate-180" />
+      <ChargeMark className="h-9 w-9 transition-transform duration-300 group-hover:rotate-180" />
       <span className="text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap">
         {prefix}
         <span className="text-amber-600">{suffix}</span>

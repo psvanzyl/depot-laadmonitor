@@ -9,12 +9,11 @@ import { TIER_COLOR, type AccessClass, type Depots, type Tier } from "@/lib/type
 // findings are drawn on top of it, at the company's own yard where we can prove it.
 type Companies = { type: "FeatureCollection"; features: unknown[] } | null;
 
-// The Depotcharge feed is multi-country (DE/CH/ES/IT/AT/LU/LI). The first view
-// has to contain those sites or they are silently invisible, so the box covers
-// NL plus its neighbours instead of NL alone.
-const NL_BOUNDS: [[number, number], [number, number]] = [
-  [-3.0, 44.0],
-  [15.0, 55.0],
+// The data is Europe-wide now: NL, DE, FR, IT, ES, PL, SE, NO ... The first
+// view has to contain the continent or most of the map is empty on load.
+const EUROPE_BOUNDS: [[number, number], [number, number]] = [
+  [-11.0, 33.0],
+  [31.0, 71.5],
 ];
 
 // Key-free raster basemap. CARTO started demanding an API key and served
@@ -39,6 +38,8 @@ interface Props {
   companies?: Companies;
   coverage?: { type: string; features: unknown[] } | null;
   showCoverage?: boolean;
+  /** Which coverage radius to draw. The rings are exported per radius. */
+  radiusM?: number;
   countries?: string[] | null;
   showCompanies?: boolean;
   minKw?: number;
@@ -92,6 +93,7 @@ export default function MapView({
   depots,
   coverage,
   showCoverage = false,
+  radiusM = 500,
   countries,
   companies = null,
   showCompanies = true,
@@ -113,7 +115,7 @@ export default function MapView({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: BASEMAP_STYLE,
-      bounds: NL_BOUNDS,
+      bounds: EUROPE_BOUNDS,
       fitBoundsOptions: { padding: 28 },
       attributionControl: { compact: true },
     });
@@ -245,8 +247,10 @@ export default function MapView({
     else map.once("load", ensure);
   }, [depots]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 500 m coverage rings. Added under the depot dots so the site markers stay
+  // Coverage rings. Added under the depot dots so the site markers stay
   // readable, and toggled by visibility instead of being removed and re-added.
+  // The file holds rings for several radii; the map shows one radius at a time,
+  // the way the pakketpuntenviewer does.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !coverage) return;
@@ -286,6 +290,14 @@ export default function MapView({
       }
     }
   }, [showCoverage, coverage]);
+
+  // Only the rings of the selected radius are drawn.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer("coverage")) return;
+    map.setFilter("coverage", ["==", ["get", "radiusM"], radiusM]);
+    map.setFilter("coverage-line", ["==", ["get", "radiusM"], radiusM]);
+  }, [radiusM, coverage]);
 
   // Tier, HGV, power and access filters are client-side, so the chips work without a rebuild.
   useEffect(() => {

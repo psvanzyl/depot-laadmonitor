@@ -70,6 +70,14 @@ const nl: Dict = {
   accessHintPrivate: "Besloten terrein, geen publieke toegang.",
   accessHintUnknown: "Toegang niet vastgesteld.",
   sourcesNote: "bronnen",
+  on: "aan",
+  off: "uit",
+  radius: "Straal",
+  fleetByCountry: "Vrachtvloot per land",
+  fleetByCountryHint: "Aantal laders per land dat nodig is voor volledige dekking, op basis van de bedrijvendichtheid die de bestaande laders in dat land al bereiken. Schatting, geen meting.",
+  moreCountries: "meer landen tonen",
+  fewerCountries: "minder landen tonen",
+
 };
 
 const en: Dict = {
@@ -129,6 +137,14 @@ const en: Dict = {
   accessHintPrivate: "Closed site, no public access.",
   accessHintUnknown: "Access not established.",
   sourcesNote: "sources",
+  on: "on",
+  off: "off",
+  radius: "Radius",
+  fleetByCountry: "Fleet per country",
+  fleetByCountryHint: "Chargers each country needs for full coverage, based on the company density its existing chargers already reach. An estimate, not a measurement.",
+  moreCountries: "show more countries",
+  fewerCountries: "show fewer countries",
+
 };
 
 const de: Dict = {
@@ -159,6 +175,14 @@ const de: Dict = {
   accessSemi: "Halböffentlich",
   accessPrivate: "Privat",
   accessUnknown: "Unbekannt",
+  on: "an",
+  off: "aus",
+  radius: "Radius",
+  fleetByCountry: "Flotte pro Land",
+  fleetByCountryHint: "Ladepunkte, die jedes Land für die volle Abdeckung braucht, abgeleitet von der Betriebsdichte, die die vorhandenen Ladepunkte dort bereits erreichen. Schätzung, keine Messung.",
+  moreCountries: "mehr Länder zeigen",
+  fewerCountries: "weniger Länder zeigen",
+
 };
 
 const fr: Dict = {
@@ -189,6 +213,14 @@ const fr: Dict = {
   accessSemi: "Semi-public",
   accessPrivate: "Privé",
   accessUnknown: "Inconnu",
+  on: "activé",
+  off: "désactivé",
+  radius: "Rayon",
+  fleetByCountry: "Flotte par pays",
+  fleetByCountryHint: "Chargeurs nécessaires à chaque pays pour une couverture totale, d'après la densité d'entreprises que ses chargeurs actuels atteignent déjà. Une estimation, pas une mesure.",
+  moreCountries: "afficher plus de pays",
+  fewerCountries: "afficher moins de pays",
+
 };
 
 const DICTS: Record<Lang, Dict> = { nl, en, de, fr };

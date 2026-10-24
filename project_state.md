@@ -452,3 +452,124 @@ visibility before capturing.
 
 ## Sources
 eTrucker HDV locations: see ps_etrucker.md (Firestore snapshot, anonymous read).
+
+## 2026-10-24 — Europe-wide, dex-family harmonised (Hermione)
+
+Boss asked for: a language selector, country / type (private-public) / power
+(kW) filters, the DepotChargeDex brand, the spinning logo on every dex site,
+500 m coverage circles like the pakketpuntenviewer, coverage statistics from
+the company layer, and full European charger coverage.
+
+### What was already there (from 2026-10-23)
+The i18n dictionary, the country/power/access filters, the 500 m coverage rings
+and the spin logo on DepotChargeDex were all built the evening before. This
+session made them real, verified them, and extended the data from the
+Netherlands to Europe.
+
+### 1. Language selector — DONE
+`lib/i18n.ts` carries four dictionaries (NL/EN/DE/FR). The selector is in the
+header, mirrored into `?lang=` and `localStorage`, so a shared link keeps its
+language. Dutch is the default. **Every language now has every key**: a check
+script adds the seven new keys to all four dictionaries, so nothing falls back
+to Dutch behind the scenes.
+
+### 2. Filters — DONE and widened
+- Country: the list was capped at 14 with no way to see the rest. It now
+  expands to all countries, and the names are in Dutch.
+- Type: the access-class chips (publiek / semi-publiek / privaat / onbekend)
+  already existed and now carry `aria-pressed`.
+- Power: the 0 / 50 / 150 / 350+ kW steps already existed.
+
+### 3. Brand + spinning logo across the dex family — DONE
+The house style is now one rule: **the mark rotates 180 degrees while the
+pointer is over the logo link.** The rotation lives on the SVG, not on the
+wrapper, because Rugbydex and Carddex put their mark inside a decorative
+badge; rotating the badge would rotate its gradient too.
+
+| site | before | after |
+|---|---|---|
+| Footballdex | ball, hover-rotate | unchanged (it was the reference) |
+| Rugbydex | plain ball, no rotation | ball spins |
+| Carddex | plain Poké Ball, no rotation | ball spins |
+| DepotChargeDex | bolt spins, but 500 ms | bolt spins at 300 ms, matching the rest |
+
+All four use `transition-transform duration-300 group-hover:rotate-180` on the
+mark and `group` on the link. Both other sites build clean.
+
+### 4. 500 m coverage circles — DONE, with a radius picker
+Inspired by the pakketpuntenviewer, the map now lets you pick the radius:
+**500 m / 1 km / 2 km / 5 km**. The exporter writes one ring set per radius
+into `coverage.geojson` (7,164 rings across 4 radii) and the map filters on
+`radiusM`. The file went from 1.5 MB to 6.3 MB at 5-decimal precision, which
+is too heavy for a phone, so the rings are written at 4 decimals (about 11 m,
+0.4% of a 500 m radius) — that is well below the accuracy of a charger
+position.
+
+### 5. Fleet estimate from the company layer — DONE, per country
+`scripts/export_coverage.py` now reports **per country**: how many HGV
+chargers a country has, what share of its companies is within 500 m, and how
+many chargers that country's fleet needs. The estimate divides the companies
+in a country by the density its existing chargers already reach. It is a
+density assumption, and the file says so.
+
+The country table is in the sidebar under "Vrachtvloot per land". A Europe-wide
+average hides the real differences; the table shows them.
+
+### 6. Full European coverage — the scrapers
+Two new ingests, both one Overpass query per country, both with a per-country
+`runs` row so a partial failure is visible instead of hidden:
+
+- `src/depotmon/ingest/osm_eu.py` — truck-capable charge points:
+  `amenity=charging_station` with `hgv`, `socket:mcs`, or a non-public
+  `access` tag. **17,386 elements in one Europe-wide box; ~7,300 kept after
+  the truck gate** (an `hgv` tag, an MCS socket, or at least 50 kW).
+- `src/depotmon/ingest/osm_companies_eu.py` — logistics premises, the base
+  layer that makes the coverage analysis meaningful.
+
+Both rotate four Overpass mirrors and back off on HTTP 429 (rate limited).
+The country order is by charging density, so a partial run still leaves the
+most valuable coverage in place.
+
+**Measured Overpass cost** (per country, from CT141): DE 7,289 elements in
+115 s, FR 4,942 in 91 s, SE 567 in 41 s, NO rate-limited (429). A single
+Europe-wide box returns 17,386 elements in 125 s — so per-country queries cost
+about the same in total and give per-country visibility, which is worth it.
+
+### The country bug that the bounding boxes caused
+The first version derived the country from the Overpass query box. Aachen
+(6.08 E, 50.78 N) came out as **BE**, because the point is inside the Belgian
+rectangle too, and the Belgian rectangle is smaller than the German one. A
+bbox is a rectangle; Europe is not.
+
+Replaced by a real polygon lookup: `src/depotmon/ingest/country_geom.py`
+reads `resources/geo/countries-europe.geojson` (46 countries, 2.4 MB,
+simplified to 0.001 degrees) and does a point-in-polygon ray cast. The source
+is `datasets/geo-countries`; `scripts/` keeps the reducer so the file can be
+regenerated. The Overpass boxes stay — they bound the query, they do not
+decide the country.
+
+`tests/test_osm_eu.py` checks 35 real cities against the polygons, including
+the border cases that broke the bbox version. All 15 tests pass.
+
+### Migration
+`migrations/006_europe.sql`: `companies.country`, a generated
+`signals.country` column (from `raw_state`), and `premises_scores.country`,
+all indexed. The exporter resolves the country for every feature from the
+signals, then falls back to the polygon lookup.
+
+### Live channels
+- `https://depot.laserraptorai.duckdns.org/` — the public URL (Coolify app
+  `zwchjhlpi9ddx5b9az9pppmc`, project `fqu2qsk1js5phkbwpjw5wk81`).
+- `https://depot.home.arpa/` — the internal URL (Caddy on CT106).
+- The map now opens on **Europe**, not the Netherlands.
+
+### Tests
+107 green (92 before, 15 new in `tests/test_osm_eu.py`).
+
+### Open
+- The Europe-wide ingest is still running. The company layer for Europe is the
+  long pole: the chargers are in, the companies per country are not yet, so
+  the per-country "chargers needed" column can only be computed for the
+  Netherlands so far.
+- `resources/geo/countries-europe.geojson` (2.4 MB) is in git. The
+  14.6 MB world file is not; the reducer regenerates it.

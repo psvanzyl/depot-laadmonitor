@@ -216,7 +216,7 @@ def main() -> None:
         cur.execute(
             """SELECT lon, lat, raw_state->>'country' AS c
                  FROM signals
-                WHERE source IN ('depotcharge', 'etrucker')
+                WHERE source IN ('depotcharge', 'etrucker', 'osm_eu')
                   AND raw_state->>'country' IS NOT NULL
                   AND lon IS NOT NULL AND lat IS NOT NULL"""
         )
@@ -236,23 +236,21 @@ def main() -> None:
     # eTrucker declares ISO-3 (DEU, FRA); the UI labels are ISO-2. Dutch rows with
     # no province were skipped by the proximity step above, so they kept an empty
     # country even though they sit inside the NL box.
-    ISO3_TO_ISO2 = {
-        "NLD": "NL", "DEU": "DE", "BEL": "BE", "AUT": "AT", "CHE": "CH",
-        "ESP": "ES", "ITA": "IT", "LUX": "LU", "LIE": "LI", "FRA": "FR",
-        "DNK": "DK", "POL": "PL", "CZE": "CZ", "SWE": "SE", "NOR": "NO",
-        "FIN": "FI", "PRT": "PT", "IRL": "IE", "GBR": "GB", "EST": "EE",
-        "LVA": "LV", "LTU": "LT", "ROU": "RO", "BGR": "BG", "GRC": "GR",
-        "SVK": "SK", "SVN": "SI", "HRV": "HR", "HUN": "HU", "SRB": "RS",
-        "ISL": "IS",
-    }
+    # One place defines the mapping, so the exporter and the coverage export
+    # cannot drift apart.
+    from depotmon.ingest.osm_eu import ISO3_TO_ISO2, country_of
     for feat in features:
         props = feat["properties"]
         code = (props.get("country") or "").strip().upper()
         code = ISO3_TO_ISO2.get(code, code if len(code) == 2 else "")
         if not code:
             x, y = feat["geometry"]["coordinates"][:2]
-            if 3.2 <= x <= 7.3 and 50.7 <= y <= 53.6:
-                code = "NL"
+            # A bounding box is an approximation of a border, but it is better
+            # than an empty label, and the site shows the code, not a guess
+            # dressed up as a fact.
+            code = country_of(float(x), float(y))
+        if not code and 3.2 <= x <= 7.3 and 50.7 <= y <= 53.6:
+            code = "NL"
         props["country"] = code
 
     features.sort(key=lambda f: (-TIER_ORDER[f["properties"]["tier"]], -f["properties"]["score"]))

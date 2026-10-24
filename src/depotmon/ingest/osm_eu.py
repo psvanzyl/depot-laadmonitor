@@ -42,11 +42,20 @@ from . import country_geom
 OVERPASS_TIMEOUT = 300.0
 
 # Ordered by measured reliability from CT141 (see project_state.md).
+# Ordered by what actually answered when it was measured. On 2026-10-24,
+# during the Europe company ingest, overpass-api.de refused connections and
+# overpass.private.coffee and overpass.kumi.systems timed out, while
+# overpass.osm.ch and overpass.openstreetmap.fr answered in under half a
+# second. With two of four mirrors down every query walked through two
+# 100-second timeouts before reaching a mirror that worked.
+# The working mirrors come first; the rest stay in the list for when they
+# come back.
 MIRRORS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
 ]
 
 OVERPASS_EXEMPT = {

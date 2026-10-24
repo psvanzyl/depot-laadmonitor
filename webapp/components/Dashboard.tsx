@@ -138,6 +138,15 @@ export default function Dashboard() {
     window.history.replaceState({}, "", url);
   };
 
+  // The <html lang> attribute is what a screen reader uses to pick a voice,
+  // and what a search engine reads. It was hardcoded to "nl" in the layout,
+  // so a German page announced Dutch. The layout cannot know the language
+  // (it is chosen in the client, from the URL or localStorage), so the
+  // attribute is set here, where the choice is made.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   const t = useMemo(() => makeT(lang), [lang]);
   const nf = useMemo(
     () => new Intl.NumberFormat(lang === "nl" ? "nl-NL" : lang === "de" ? "de-DE" : lang === "fr" ? "fr-FR" : "en-GB"),

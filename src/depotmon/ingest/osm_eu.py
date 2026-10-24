@@ -135,6 +135,11 @@ ISO2_TO_ISO3 = {
     "AD": "AND", "MC": "MCO", "SM": "SMR", "LI": "LIE", "VA": "VAT", "XK": "XKX",
 }
 
+# The reverse direction: a source may hand over an ISO-3 code (DEU) while the
+# UI labels key on ISO-2 (DE). Derived here so there is ONE mapping in the
+# codebase, not one per script.
+ISO3_TO_ISO2 = {v: k for k, v in ISO2_TO_ISO3.items()}
+
 QUERY = """
 [out:json][timeout:280];
 (

@@ -1,31 +1,31 @@
 {
-  "generatedAt": "2026-10-24T05:28:07+00:00",
+  "generatedAt": "2026-10-24T10:10:57+00:00",
   "sites": {
-    "total": 2139,
-    "scored": 2314,
+    "total": 3382,
+    "scored": 3557,
     "withoutCoords": 175,
     "byTier": {
       "A": 1498,
-      "B": 55,
-      "C": 586
+      "B": 443,
+      "C": 1441
     },
-    "hgv": 1874,
+    "hgv": 2051,
     "byAccess": {
       "public": 1813,
-      "semi_public": 65,
-      "private": 95,
-      "unknown": 166
+      "semi_public": 548,
+      "private": 189,
+      "unknown": 832
     }
   },
   "power": {
-    "totalKw": 627994.7,
-    "sitesWithKw": 2027
+    "totalKw": 858277.5,
+    "sitesWithKw": 3239
   },
   "byProvince": {
-    "Onbekend": 1579,
+    "Onbekend": 2821,
     "Zuid-Holland": 101,
     "Noord-Holland": 85,
-    "Noord-Brabant": 81,
+    "Noord-Brabant": 82,
     "Gelderland": 61,
     "Overijssel": 54,
     "Utrecht": 54,
@@ -38,14 +38,14 @@
   },
   "byChannel": {
     "etrucker": 1472,
+    "osm": 1412,
     "depotcharge": 209,
     "chargepoint": 172,
-    "osm": 168,
     "news": 88,
     "permit": 50
   },
   "precision": {
-    "premises": 2055,
+    "premises": 3298,
     "address": 75,
     "signal": 9
   },

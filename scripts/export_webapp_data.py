@@ -238,7 +238,7 @@ def main() -> None:
     # country even though they sit inside the NL box.
     # One place defines the mapping, so the exporter and the coverage export
     # cannot drift apart.
-    from depotmon.ingest.osm_eu import ISO3_TO_ISO2, country_of
+    from depotmon.ingest.osm_eu import ISO3_TO_ISO2, country_of  # one mapping, one place
     for feat in features:
         props = feat["properties"]
         code = (props.get("country") or "").strip().upper()

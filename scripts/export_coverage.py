@@ -34,6 +34,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from depotmon.config import Settings  # noqa: E402
 from depotmon.store import Store  # noqa: E402
+from depotmon.ingest.osm_eu import ISO3_TO_ISO2  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[1] / "webapp/public/data"
 RADIUS_M = 500
@@ -43,18 +44,7 @@ RADIUS_M = 500
 # lets you pick the radius of the circle you draw around a point.
 RING_RADII = [500, 1000, 2000, 5000]
 
-# The UI labels countries in the site's own language set. ISO-2 is the key.
-ISO3_TO_ISO2 = {
-    "NLD": "NL", "DEU": "DE", "BEL": "BE", "AUT": "AT", "CHE": "CH",
-    "ESP": "ES", "ITA": "IT", "LUX": "LU", "LIE": "LI", "FRA": "FR",
-    "DNK": "DK", "POL": "PL", "CZE": "CZ", "SWE": "SE", "NOR": "NO",
-    "FIN": "FI", "PRT": "PT", "IRL": "IE", "GBR": "GB", "EST": "EE",
-    "LVA": "LV", "LTU": "LT", "ROU": "RO", "BGR": "BG", "GRC": "GR",
-    "SVK": "SK", "SVN": "SI", "HRV": "HR", "HUN": "HU", "SRB": "RS",
-    "ISL": "IS", "BIH": "BA", "MNE": "ME", "MKD": "MK", "ALB": "AL",
-    "CYP": "CY", "MLT": "MT", "MCO": "MC", "SMR": "SM", "AND": "AD",
-    "VAT": "VA", "XKX": "XK",
-}
+# The ISO-3 -> ISO-2 map lives in osm_eu.py, next to its reverse.
 
 
 def _norm_country(raw) -> str:

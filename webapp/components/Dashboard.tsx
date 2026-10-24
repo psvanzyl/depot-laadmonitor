@@ -285,16 +285,15 @@ export default function Dashboard() {
     [pairs, covFilter],
   );
 
-  // How many chargers are needed to reach every company in scope, at the
-  // density the selected chargers already reach. A country whose companies
-  // are not in the layer has no answer, and gets a dash rather than a zero.
-  const chargersNeeded = useMemo(() => {
-    if (!liveCoverage || liveCoverage.covered <= 0) return null;
-    const perCharger = liveCoverage.covered / Math.max(1, liveCoverage.chargers);
-    if (perCharger <= 0) return null;
-    const uncovered = liveCoverage.denominator - liveCoverage.covered;
-    if (uncovered <= 0) return liveCoverage.chargers;
-    return liveCoverage.chargers + Math.ceil(uncovered / perCharger);
+  // The companies still out of range. A hard count from the pair table, not
+  // an extrapolation: the old "chargers needed" divided the uncovered
+  // companies by the average companies-per-charger, which assumes every new
+  // charger performs exactly like the average one. Chargers get placed where
+  // the companies cluster, so that curve is sublinear and the number it
+  // printed (85,268) was consistent arithmetic and useless planning.
+  const notCovered = useMemo(() => {
+    if (!liveCoverage) return null;
+    return Math.max(0, liveCoverage.denominator - liveCoverage.covered);
   }, [liveCoverage]);
 
   const toggleTier = (x: Tier) =>
@@ -436,9 +435,9 @@ export default function Dashboard() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">{t("chargersNeeded")}</dt>
+                  <dt className="text-slate-500">{t("notCovered")}</dt>
                   <dd className="text-lg font-bold text-amber-700 tabular-nums">
-                    {chargersNeeded !== null ? nf.format(chargersNeeded) : "—"}
+                    {notCovered !== null ? nf.format(notCovered) : "—"}
                   </dd>
                 </div>
               </dl>

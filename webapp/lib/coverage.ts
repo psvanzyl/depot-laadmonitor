@@ -88,9 +88,22 @@ export function computeCoverage(
   // so the UI can show how much the filter costs.
   const coveredSet = new Set<number>();
   const unfilteredSet = new Set<number>();
-  const matchingChargers = new Set<number>();
 
   const { chargers, pairs } = data;
+
+  // Chargers that pass the filter. Counted over the charger table, not over
+  // the pairs: a charger with no transport company within 5 km is still a
+  // charger that passes the filter, and reporting only the ones that happen
+  // to reach a company made the count look like a third of reality.
+  let matchingChargers = 0;
+  for (let i = 0; i < chargers.length; i++) {
+    const c = chargers[i];
+    if (countrySet && !countrySet.has(c[0])) continue;
+    if (accessSet && !accessSet.has(c[1])) continue;
+    if (bandSet && !bandSet.has(c[2])) continue;
+    if (filter.hgvOnly && c[3] !== 1) continue;
+    matchingChargers += 1;
+  }
   for (let i = 0; i < pairs.length; i++) {
     const p = pairs[i];
     if (p[2] > filter.radiusM) continue;
@@ -109,7 +122,6 @@ export function computeCoverage(
     if (bandSet && !bandSet.has(band)) continue;
     if (filter.hgvOnly && !hgv) continue;
 
-    matchingChargers.add(p[0]);
     coveredSet.add(p[1]);
   }
 
@@ -124,7 +136,7 @@ export function computeCoverage(
     covered: coveredSet.size,
     denominator,
     pct: denominator > 0 ? Math.round((1000 * coveredSet.size) / denominator) / 10 : null,
-    chargers: matchingChargers.size,
+    chargers: matchingChargers,
     coveredUnfiltered: unfilteredSet.size,
   };
 }

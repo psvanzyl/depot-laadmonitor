@@ -104,12 +104,48 @@ def _areas() -> dict:
     return out
 
 
+_BBOXES: dict | None = None
+
+
+def _bbox_of(geom) -> tuple:
+    """Bounding box of a (Multi)Polygon geometry, as (minx, miny, maxx, maxy)."""
+    xs: list[float] = []
+    ys: list[float] = []
+    if geom["type"] == "Polygon":
+        polys = [geom["coordinates"]]
+    else:
+        polys = geom["coordinates"]
+    for poly in polys:
+        for ring in poly:
+            for pt in ring:
+                xs.append(pt[0])
+                ys.append(pt[1])
+    if not xs:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _bboxes() -> dict:
+    global _BBOXES
+    if _BBOXES is None:
+        _BBOXES = {code: _bbox_of(geom) for code, geom in _geometries().items()}
+    return _BBOXES
+
+
 def country_for(lon: float, lat: float) -> str:
     """ISO-2 country for a point, or an empty string outside Europe."""
     x, y = float(lon), float(lat)
     best = ""
     best_area = None
+    boxes = _bboxes()
     for code, geom in _geometries().items():
+        # Cheap rejection first. A point outside a country's bounding box is
+        # certainly outside the country, so the polygon walk can be skipped.
+        # The box never ACCEPTS a point; it only rejects, so the answer is
+        # unchanged.
+        box = boxes.get(code)
+        if box is not None and not (box[0] <= x <= box[2] and box[1] <= y <= box[3]):
+            continue
         if not _point_in_geom(x, y, geom):
             continue
         area = _areas().get(code, 0.0)

@@ -42,7 +42,9 @@ interface Props {
   radiusM?: number;
   countries?: string[] | null;
   showCompanies?: boolean;
-  minKw?: number;
+  /** Selected power band indices. The same bands the coverage uses. */
+  powerBands?: { lo: number; hi: number | null }[];
+  bands?: number[];
   tiers: Tier[];
   access: AccessClass[];
   hgvOnly: boolean;
@@ -97,7 +99,8 @@ export default function MapView({
   countries,
   companies = null,
   showCompanies = true,
-  minKw = 0,
+  powerBands = [],
+  bands = [],
   tiers,
   access,
   hgvOnly,
@@ -343,13 +346,25 @@ export default function MapView({
     // Missing accessClass (older data) counts as "unknown", matching the sidebar list.
     filters.push(["in", ["coalesce", ["get", "accessClass"], "unknown"], ["literal", access]]);
     if (hgvOnly) filters.push(["==", ["get", "hgv"], true]);
-    if (minKw > 0) filters.push([">=", ["coalesce", ["get", "powerKw"], 0], minKw]);
+    // Power as bands. A charger with no published power is band 0, so it is
+    // included only when band 0 is selected, never silently.
+    if (powerBands.length && bands.length && bands.length < powerBands.length) {
+      const ranges = bands.map((i) => powerBands[i]).filter(Boolean);
+      const anyOf: unknown[] = ["any"];
+      for (const b of ranges) {
+        const parts: unknown[] = ["all"];
+        parts.push([">=", ["coalesce", ["get", "powerKw"], 0], b.lo]);
+        if (b.hi !== null) parts.push(["<", ["coalesce", ["get", "powerKw"], 0], b.hi]);
+        anyOf.push(parts);
+      }
+      if (anyOf.length > 1) filters.push(anyOf);
+    }
     // Country selection from the sidebar; no selection means every country.
     if (countries) {
       filters.push(["in", ["coalesce", ["get", "country"], "?"], ["literal", countries]]);
     }
     map.setFilter("depots", ["all", ...filters] as never);
-  }, [tiers, access, hgvOnly, minKw, countries, depots]);
+  }, [tiers, access, hgvOnly, bands, powerBands, countries, depots]);
 
   useEffect(() => {
     const map = mapRef.current;

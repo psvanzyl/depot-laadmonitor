@@ -23,7 +23,7 @@ from ..news_extract import normalize_company
 from ..store import Store
 
 from .osm_eu import (EUROPE_BOXES, ISO2_TO_ISO3, MIRRORS,
-                       SHORT_USER_AGENT,
+                       SHORT_USER_AGENT, country_of, country_of,
                        OVERPASS_EXEMPT, PRIORITY_ORDER)
 
 OVERPASS_TIMEOUT = 300.0
@@ -128,6 +128,23 @@ def _fetch(settings, store, run_id, box) -> dict:
     raise RuntimeError(f"all mirrors failed: {attempts[-1] if attempts else '?'}")
 
 
+def company_country(row: dict, box_code: str) -> str:
+    """ISO-2 country for a company, from the polygons.
+
+    The polygon WINS. The Overpass box code is only a fallback for a point the
+    polygon does not resolve (an island the simplified polygon dropped, or a
+    coordinate just outside the coastline). Writing the box code instead
+    labelled every company in the German box as German, including the Belgian,
+    Dutch, Austrian and Swiss ones: DE read 71,066 while NL fell from 12,445
+    to 3,209.
+    """
+    try:
+        found = country_of(float(row["lon"]), float(row["lat"]))
+    except Exception:  # noqa: BLE001
+        found = ""
+    return found or box_code
+
+
 def run(store: Store, settings: Settings, countries: list[str] | None = None) -> dict:
     targets = countries or PRIORITY_ORDER
     overall: dict = {"countries": {}, "failed": [], "stored": 0}
@@ -204,7 +221,7 @@ def run(store: Store, settings: Settings, countries: list[str] | None = None) ->
                                   country = EXCLUDED.country,
                                   geom = EXCLUDED.geom, last_seen = now()
                         """,
-                        {**r, "country": code},
+                        {**r, "country": company_country(r, code)},
                     )
                     stats["stored"] += 1
             overall["countries"][code] = stats

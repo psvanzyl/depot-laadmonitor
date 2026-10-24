@@ -390,19 +390,22 @@ export default function Dashboard() {
                 {t("fleetByCountry")}
               </h2>
               <div className="overflow-x-auto -mx-1 px-1">
-                <table className="w-full text-xs min-w-[340px]">
+                {/* min-w forces a horizontal scrollbar rather than squeezing the
+                    columns: at 332 px of card width the four columns do not
+                    fit, and squeezed numbers get clipped at the card edge. */}
+                <table className="w-full text-xs min-w-[300px] table-fixed">
                   <thead>
                     <tr className="text-slate-400 border-b border-slate-100">
-                      <th className="text-left font-medium py-1">{t("country")}</th>
-                      <th className="text-right font-medium py-1">{t("chargersNow")}</th>
-                      <th className="text-right font-medium py-1">500 m</th>
-                      <th className="text-right font-medium py-1">{t("chargersNeeded")}</th>
+                      <th className="text-left font-medium py-1 w-[42%]">{t("country")}</th>
+                      <th className="text-right font-medium py-1 w-[20%]">{t("chargersNow")}</th>
+                      <th className="text-right font-medium py-1 w-[16%]">500 m</th>
+                      <th className="text-right font-medium py-1 w-[22%]">{t("chargersNeeded")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {countryCoverage.map((r) => (
                       <tr key={r.country} className="border-t border-slate-100">
-                        <td className="py-1.5 text-slate-700">{countryName(r.country)}</td>
+                        <td className="py-1.5 pr-1 text-slate-700 truncate">{countryName(r.country)}</td>
                         <td className="py-1.5 text-right tabular-nums text-slate-600">
                           {nf.format(r.chargersHgv)}
                         </td>

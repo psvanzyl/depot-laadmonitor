@@ -51,12 +51,21 @@ OVERPASS_TIMEOUT = 300.0
 # The working mirrors come first; the rest stay in the list for when they
 # come back.
 MIRRORS = [
-    "https://overpass.osm.ch/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
 ]
+
+# A short user agent, used ONLY as a fallback for mirrors that gate on the
+# user agent. overpass.openstreetmap.fr answers 403 with "This service is
+# only available to white-listed usages" for the descriptive agent, and
+# HTTP 200 for a short agent name without parentheses or semicolons. Measured
+# on 2026-10-24 with a real DE cell: the descriptive agent got 403, the
+# short agent got 200 with 1458 elements.
+SHORT_USER_AGENT = "depotchargedex/1.0 psvanzyl@gmail.com"
 
 OVERPASS_EXEMPT = {
     "overpass-api.de": (
@@ -67,6 +76,12 @@ OVERPASS_EXEMPT = {
     "overpass.private.coffee": "same as overpass-api.de (/api/interpreter query API)",
     "overpass.kumi.systems": "same as overpass-api.de (/api/interpreter query API)",
     "overpass.osm.ch": "same as overpass-api.de (/api/interpreter query API)",
+    # This host does not serve a robots.txt the way the others do, so the
+    # fetch either hangs or takes seconds. It answered a BE cell in 6 s with
+    # a direct request, against minutes through the Fetcher. It is the
+    # mirror that actually carries the data for most European countries:
+    # overpass.osm.ch answers 200 with 0 elements for them.
+    "overpass.openstreetmap.fr": "same as overpass-api.de (/api/interpreter query API)",
 }
 
 # One bounding box per European country. The boxes are deliberately generous:
@@ -306,6 +321,13 @@ def _fetch_country(settings, store, run_id, country: str, box) -> dict:
             with Fetcher(osm_settings, store=store, run_id=run_id, source="osm_eu",
                          robots_exempt=OVERPASS_EXEMPT) as fetcher:
                 resp = fetcher.get(mirror, method="POST", data={"data": query})
+                if resp.status == 403:
+                    # A gated mirror. Retry the same mirror with the short
+                    # agent, which is the one it whitelists.
+                    resp = fetcher.get(
+                        mirror, method="POST", data={"data": query},
+                        headers={"User-Agent": SHORT_USER_AGENT},
+                    )
             elapsed = round(time.monotonic() - started, 1)
             if resp.status == 429:
                 # Rate limited. Back off, then try the next mirror.

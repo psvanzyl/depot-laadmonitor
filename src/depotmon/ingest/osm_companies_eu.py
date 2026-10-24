@@ -23,6 +23,7 @@ from ..news_extract import normalize_company
 from ..store import Store
 
 from .osm_eu import (EUROPE_BOXES, ISO2_TO_ISO3, MIRRORS,
+                       SHORT_USER_AGENT,
                        OVERPASS_EXEMPT, PRIORITY_ORDER)
 
 OVERPASS_TIMEOUT = 300.0
@@ -60,7 +61,7 @@ def _kind(tags: dict) -> str:
 def build_query(box: tuple[float, float, float, float]) -> str:
     s, w, n, e = box
     b = f"{s},{w},{n},{e}"
-    return f"[out:json][timeout:280];\n(\n{SELECTORS.format(b=b)}\n);\nout center tags;"
+    return f"[out:json][timeout:110];\n(\n{SELECTORS.format(b=b)}\n);\nout center tags;"
 
 
 # A country box is cut into cells of at most this many degrees on a side.
@@ -68,7 +69,13 @@ def build_query(box: tuple[float, float, float, float]) -> str:
 # and Overpass answers a timed-out query with HTTP 200 and 0 elements, which
 # the ingest refuses to accept. So the country is split BEFORE the query, not
 # after it has already failed.
-MAX_CELL_DEG = 2.0
+MAX_CELL_DEG = 1.0
+
+# A cell that has not answered in two minutes will not answer in five.
+# Five mirrors at 300 s each was a 25-minute stall per cell. The server
+# side Overpass timeout is 110 s (see build_query), so the client waits a
+# little longer than the server and then moves to the next mirror.
+CELL_HTTP_TIMEOUT = 120.0
 
 
 def tiles(box: tuple[float, float, float, float]) -> list:
@@ -89,7 +96,7 @@ def tiles(box: tuple[float, float, float, float]) -> list:
 
 def _fetch(settings, store, run_id, box) -> dict:
     query = build_query(box)
-    osm_settings = replace(settings, http_timeout=OVERPASS_TIMEOUT, max_retries=1)
+    osm_settings = replace(settings, http_timeout=CELL_HTTP_TIMEOUT, max_retries=1)
     attempts = []
     for mirror in MIRRORS:
         host = mirror.split("/")[2]
@@ -98,6 +105,13 @@ def _fetch(settings, store, run_id, box) -> dict:
             with Fetcher(osm_settings, store=store, run_id=run_id, source="osm_co_eu",
                          robots_exempt=OVERPASS_EXEMPT) as fetcher:
                 resp = fetcher.get(mirror, method="POST", data={"data": query})
+                if resp.status == 403:
+                    # A gated mirror. Retry the same mirror with the short
+                    # agent, which is the one it whitelists.
+                    resp = fetcher.get(
+                        mirror, method="POST", data={"data": query},
+                        headers={"User-Agent": SHORT_USER_AGENT},
+                    )
             elapsed = round(time.monotonic() - started, 1)
             if resp.status != 200:
                 raise RuntimeError(f"HTTP {resp.status}")

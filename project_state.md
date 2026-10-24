@@ -573,3 +573,42 @@ signals, then falls back to the polygon lookup.
   Netherlands so far.
 - `resources/geo/countries-europe.geojson` (2.4 MB) is in git. The
   14.6 MB world file is not; the reducer regenerates it.
+
+### The company layer is the long pole
+
+The charger ingest for all 46 countries took about 60 minutes. The company
+ingest is the same shape but a heavier query: the logistics-premises selector
+returns far more elements than the charge-point selector, and a country that
+fails one Overpass query has to be split into quadrants.
+
+Measured on the charger pass: 44 of 46 countries succeeded. The failures were
+**MT, AD, SM and VA** — Malta, Andorra, San Marino and the Vatican, all
+microstates whose bounding box is small enough that Overpass answers with an
+empty body. An empty 200 is treated as a failure on purpose (a mirror that
+answers 200 with 0 elements would otherwise wipe the country), so the mirror
+rotation ran out and the country was recorded as failed.
+
+That is the correct outcome: a microstate with no truck-capable charger in
+OSM is a true finding, and an empty result is not worth three more minutes
+of mirror rotation. They are recorded as failed in `runs`, not silently
+skipped.
+
+### The chargers-needed column must not say 0 when the answer is unknown
+
+A country with HGV chargers but no company layer has a density (0.8) and
+zero companies, so `ceil(0 / 0.8) = 0`. The UI printed `0` in the "chargers
+needed" column, which reads as "nothing needed". It is not: the country has
+no company layer yet, so the question cannot be answered.
+
+`chargersNeeded` is now null unless the country has BOTH a company count and
+a density. The UI renders a dash for null. The rule is in the export, not in
+the component, so every consumer gets the same honest value.
+
+### One country mapping, in one place
+
+`ISO2_TO_ISO3` lives in `osm_eu.py`; `ISO3_TO_ISO2` is derived from it right
+next to it. The exporter imported `ISO3_TO_ISO2` from `osm_eu.py` where it
+did not exist, so the export died with an ImportError the moment the Europe
+data arrived — after 45 minutes of ingest. The exporter had its own copy of
+the mapping and the coverage export had another. Both now import the one
+mapping.

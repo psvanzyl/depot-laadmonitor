@@ -689,3 +689,106 @@ Two traps in that harness:
 - 3,300 truck-capable charge points kept from 17,386 OSM elements.
 - 155,086 European logistics companies in the base layer (GB 36.8k, PL 30.5k,
   ES 24.1k, IT 20.2k, NL 16.2k, PT 7.0k, CH 5.1k).
+
+## 2026-10-24 — filter-aware coverage (Hermione)
+
+### The coverage is now computed by the site, from the filters
+
+The coverage numbers were precomputed at export time from ALL chargers, so the
+panel ignored the filters: choosing "Germany only" or "400 kW+" left the same
+European total on screen.
+
+`scripts/export_coverage_pairs.py` now exports a **pair table**: every
+charger-company pair within 5 km, as `[chargerIndex, companyIndex,
+distanceMetres]`, plus a per-charger attribute row (country, access class,
+power band, HGV flag, tier). 90,559 pairs, 3,048 chargers, 1.7 MB.
+
+`webapp/lib/coverage.ts` turns that into the answer, in the browser:
+
+    covered = distinct companies within radius of at least one matching charger
+    share   = covered / companies in the selected countries
+
+The count is DISTINCT over companies, never over pairs: a company with four
+chargers within range is one company. The exporter prints the same number
+server-side, so the two can be compared. They agree exactly:
+
+| filter            | browser        | server        |
+|-------------------|----------------|---------------|
+| all, 500 m        | 2,747 / 217,484 = 1.3% | same |
+| all, 5 km         | 45,865 / 217,484 = 21.1% | same |
+| DE only, 500 m    | 965 / 57,010 = 1.7% | same |
+
+That agreement is the test. If the two ever diverge, the browser model is
+wrong, and the server number is the one to trust.
+
+### The power filter is bands, not a minimum
+
+A minimum-kW slider cannot be reproduced from a band index: band 1 is
+50-150 kW, so ">= 100" is not a band. A site that says "150 kW+" in the
+filter while the coverage quietly counts 120 kW chargers is lying about its
+own number. The filter is now the bands the data actually has:
+< 50, 50-150, 150-350, 350+ kW.
+
+### "Chargers needed" was an extrapolation and had to go
+
+The old tile computed
+
+    chargers + ceil(uncovered / (covered / chargers))
+
+which assumes every new charger covers exactly the average number the current
+ones do. Chargers get placed where the companies cluster, so the real curve is
+sublinear and the tile printed **85,268**. Consistent arithmetic, useless
+planning. The tile now shows the companies **not yet covered**, which is a hard
+count from the same pair table and needs no assumption.
+
+### A country chip isolates that country
+
+With every country selected, clicking a chip REMOVED that country, so "Germany
+only" was the 39 clicks it takes to deselect every other one. Now:
+
+    all selected + click -> isolate
+    only it      + click -> back to all
+    otherwise    + click -> toggle
+
+### The company layer: 217,484 rows across 40 countries
+
+Getting there exposed three separate bugs.
+
+**The gated mirror.** `overpass.openstreetmap.fr` answers 403 with "This
+service is only available to white-listed usages" for the descriptive user
+agent, and HTTP 200 for a short agent name without parentheses or semicolons.
+Measured with a real DE cell: descriptive -> 403, short -> 200 with 1,458
+elements. That mirror carries most of the European data, so every cell was
+failing. A short agent is now used as a fallback, only on a 403.
+
+**The box country.** The company ingest wrote `country = <the query box's
+country>`. A box is a rectangle and Europe is not: the German box contains
+parts of the Netherlands, Belgium, Austria, Switzerland, Luxembourg and
+Czechia, so 36,881 rows were in the wrong country. DE read 71,066 while NL
+fell from 12,445 to 3,209. This is the same bug that was fixed for the charge
+points in 44850c7 — the polygon must WIN and the box is only a fallback.
+
+**The repair speed.** The Python resolver walked the vertices of every country
+whose bounding box a point fell inside, with no cheap rejection first, so
+repairing 217,484 rows did not finish in ten minutes. Two fixes:
+`country_geom.py` got a bounding-box prefilter (a box can only REJECT a
+point, never accept one, so the answer is unchanged and all 15 resolver tests
+still pass), and the repair moved to PostGIS
+(`scripts/repair_company_country_join.py`), one indexed join, 253 s.
+
+Correlated subquery with `ORDER BY ST_Area` per row: did not finish in ten
+minutes. The same test as a join with `DISTINCT ON`: 253 s. `ST_Contains`
+inside an `UPDATE` recomputes the lookup per row; materialise first.
+
+**Verification.** The polygons were checked against 12 known cities before the
+relabelling was trusted, including the hard ones: Aachen DE, Antwerpen BE,
+Maastricht NL, Basel CH, Salzburg AT, Praha CZ. 12/12 correct.
+
+### Two smaller traps
+
+- The pair table shipped a per-company country array the browser never read
+  (the denominator comes from `companiesByCountry`). 900 KB removed.
+- The charger count in the panel included only chargers that happened to
+  reach a company, so the default view said 1,077 chargers when 3,048 pass the
+  filter. It is counted over the charger table now. The fleet table had the
+  same defect (Germany 351 vs 647) and is fixed the same way.

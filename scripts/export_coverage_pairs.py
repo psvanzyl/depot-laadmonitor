@@ -243,7 +243,16 @@ def main() -> None:
         for cid in charger_ids
     ]
 
-    company_table = [company_country[cid] for cid in company_ids]
+    # Per charger, how many transport companies are within each radius. This is
+    # the "how many companies are in range of THIS charging station" number the
+    # popup shows. It is a count of pairs, not of distinct companies, because a
+    # single charger cannot cover the same company twice.
+    charger_company_counts = [[0] * len(RADII) for _ in charger_ids]
+    for ci, _mi, dist in pairs_out:
+        row = charger_company_counts[ci]
+        for ri, r in enumerate(RADII):
+            if dist <= r:
+                row[ri] += 1
 
     (OUT / "coverage_pairs.json").write_text(
         json.dumps(
@@ -252,7 +261,7 @@ def main() -> None:
                 "powerBands": [{"lo": lo, "hi": hi if hi < 10 ** 9 else None} for lo, hi in POWER_BANDS],
                 "accessClasses": ACCESS_CLASSES,
                 "chargers": charger_table,
-                "companies": company_table,
+                "chargerCompanyCounts": charger_company_counts,
                 "pairs": pairs_out,
                 "companiesByCountry": companies_by_country,
                 "companiesTotal": companies_total,
@@ -262,7 +271,7 @@ def main() -> None:
     )
     size = (OUT / "coverage_pairs.json").stat().st_size
     print(f"wrote coverage_pairs.json: {len(charger_table)} chargers, "
-          f"{len(company_table)} companies, {len(pairs_out)} pairs, {size // 1024} KB")
+          f"{len(company_ids)} companies, {len(pairs_out)} pairs, {size // 1024} KB")
 
     # Cross-check: the browser will compute the same numbers. Print the
     # default filter (all chargers, 500 m) computed here, so the two can be

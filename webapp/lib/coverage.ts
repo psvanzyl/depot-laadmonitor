@@ -29,8 +29,6 @@ export interface CoveragePairs {
   accessClasses: string[];
   /** Per charger: [country, accessClass, powerBandIndex, hgvFlag, tier] */
   chargers: [string, string, number, number, string][];
-  /** Per company: the ISO-2 country */
-  companies: string[];
   /** Per pair: [chargerIndex, companyIndex, distanceMetres] */
   pairs: [number, number, number][];
   companiesByCountry: Record<string, number>;

@@ -12,12 +12,6 @@ import {
   type Summary,
   type Tier,
 } from "@/lib/types";
-import {
-  bandFor,
-  computeCoverage,
-  coverageByCountry,
-  type CoveragePairs,
-} from "@/lib/coverage";
 
 const COUNTRY_NAME: Record<string, string> = {
   NL: "Nederland",
@@ -79,17 +73,7 @@ const ALL_TIERS: Tier[] = ["A", "B", "C"];
 const ALL_ACCESS: AccessClass[] = ["public", "semi_public", "private", "unknown"];
 const accessOf = (p: { accessClass?: AccessClass }): AccessClass =>
   p.accessClass ?? "unknown";
-// Power in kW, as BANDS, not a minimum. The coverage pair table carries a
-// band index per charger, so the filter and the coverage speak the same
-// language. A "150 kW+" slider cannot be reproduced from a band index, and a
-// site that says 150 kW+ while the coverage counts 120 kW chargers is lying
-// about its own number.
-const POWER_BANDS = [
-  { lo: 0, hi: 50, label: "< 50 kW" },
-  { lo: 50, hi: 150, label: "50–150 kW" },
-  { lo: 150, hi: 350, label: "150–350 kW" },
-  { lo: 350, hi: null, label: "350+ kW" },
-];
+const POWER_STEPS = [0, 50, 150, 350];
 /** Radii the map can draw, the way the pakketpuntenviewer lets you pick one. */
 const RADII = [500, 1000, 2000, 5000];
 
@@ -133,10 +117,7 @@ export default function Dashboard() {
   const [hgvOnly, setHgvOnly] = useState(false);
   const [companies, setCompanies] = useState<{ type: "FeatureCollection"; features: unknown[] } | null>(null);
   const [showCompanies, setShowCompanies] = useState(true);
-  const [bands, setBands] = useState<number[]>(POWER_BANDS.map((_, i) => i));
-  // The coverage pair table: every charger-company pair within 5 km, plus the
-  // per-country company counts that form the denominator. Loaded once.
-  const [pairs, setPairs] = useState<CoveragePairs | null>(null);
+  const [minKw, setMinKw] = useState(0);
   const [focus, setFocus] = useState<{ id: string; lon: number; lat: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAllCountries, setShowAllCountries] = useState(false);
@@ -185,10 +166,6 @@ export default function Dashboard() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`coverage ${r.status}`))))
       .then((d: Coverage) => setCoverage(d))
       .catch(() => setCoverage(null));
-    fetch(dataUrl("coverage_pairs.json"))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`pairs ${r.status}`))))
-      .then((d: CoveragePairs) => setPairs(d))
-      .catch(() => setPairs(null));
     fetch(dataUrl("coverage.geojson"))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`rings ${r.status}`))))
       .then((d) => setCoverageGeo(d))
@@ -216,18 +193,14 @@ export default function Dashboard() {
         .filter((f) => tiers.includes(f.properties.tier))
         .filter((f) => access.includes(accessOf(f.properties)))
         .filter((f) => (hgvOnly ? f.properties.hgv : true))
-        .filter((f) =>
-          bands.length === POWER_BANDS.length
-            ? true
-            : bands.includes(bandFor(f.properties.powerKw ?? null, POWER_BANDS)),
-        )
+        .filter((f) => (minKw > 0 ? (f.properties.powerKw ?? 0) >= minKw : true))
         .filter((f) => (countries ? countries.includes(f.properties.country || "?") : true))
         .sort(
           (a, b) =>
             "ABC".indexOf(a.properties.tier) - "ABC".indexOf(b.properties.tier) ||
             b.properties.score - a.properties.score,
         ),
-    [all, tiers, access, hgvOnly, bands, countries],
+    [all, tiers, access, hgvOnly, minKw, countries],
   );
 
   const tierCounts = useMemo(() => {
@@ -257,52 +230,40 @@ export default function Dashboard() {
     return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [visible]);
 
-  // The coverage filter, derived from the filters the user has set. This is
-  // the single place where the UI state becomes a coverage question, so the
-  // panel, the fleet table and the map rings all answer the same question.
-  const covFilter = useMemo(
-    () => ({
-      radiusM,
-      countries,
-      // null means "every value"; an empty array means "none selected".
-      access: access.length === ALL_ACCESS.length ? null : access,
-      bands: bands.length === POWER_BANDS.length ? null : bands,
-      hgvOnly,
-    }),
-    [radiusM, countries, access, bands, hgvOnly],
-  );
-
-  // The live coverage. Recomputed on every filter change: 47k pairs is a
-  // few milliseconds, so no debounce is needed.
-  const liveCoverage = useMemo(
-    () => (pairs ? computeCoverage(pairs, covFilter) : null),
-    [pairs, covFilter],
-  );
-
-  // Per-country coverage under the same filter, for the fleet table.
-  const countryRows = useMemo(
-    () => (pairs ? coverageByCountry(pairs, covFilter) : []),
-    [pairs, covFilter],
-  );
-
-  // The companies still out of range. A hard count from the pair table, not
-  // an extrapolation: the old "chargers needed" divided the uncovered
-  // companies by the average companies-per-charger, which assumes every new
-  // charger performs exactly like the average one. Chargers get placed where
-  // the companies cluster, so that curve is sublinear and the number it
-  // printed (85,268) was consistent arithmetic and useless planning.
-  const notCovered = useMemo(() => {
-    if (!liveCoverage) return null;
-    return Math.max(0, liveCoverage.denominator - liveCoverage.covered);
-  }, [liveCoverage]);
+  // Per-country fleet estimate, from the coverage export.
+  const countryCoverage = useMemo(() => {
+    const rows = coverage?.countries ?? [];
+    const selected = countries ? new Set(countries) : null;
+    return rows
+      .filter((r) => (selected ? selected.has(r.country) : true))
+      .filter((r) => r.companies > 0 || r.chargersHgv > 0)
+      .slice(0, 30);
+  }, [coverage, countries]);
 
   const toggleTier = (x: Tier) =>
     setTiers((cur) => (cur.includes(x) ? cur.filter((y) => y !== x) : [...cur, x]));
   const toggleAccess = (x: AccessClass) =>
     setAccess((cur) => (cur.includes(x) ? cur.filter((y) => y !== x) : [...cur, x]));
+  // Country chip semantics, in the order a user expects them:
+  //   all selected  + click  -> ISOLATE that country
+  //   only it       + click  -> back to all
+  //   otherwise     + click  -> toggle it
+  // Before this, a click on a chip while every country was selected REMOVED
+  // that country, so "Germany only" was the 39 clicks it takes to deselect
+  // every other country. The fleet table gives the per-country numbers, and
+  // the headline panel needs the country to be isolatable to agree with them.
   const toggleCountry = (cc: string) => {
-    const base = countries ?? countryCounts.map(([k]) => k);
-    setCountries(base.includes(cc) ? base.filter((y) => y !== cc) : [...base, cc]);
+    if (countries === null) {
+      setCountries([cc]);
+      return;
+    }
+    if (countries.length === 1 && countries[0] === cc) {
+      setCountries(null);
+      return;
+    }
+    setCountries(
+      countries.includes(cc) ? countries.filter((y) => y !== cc) : [...countries, cc],
+    );
   };
   const countryOn = (cc: string) => (countries ? countries.includes(cc) : true);
 
@@ -364,7 +325,7 @@ export default function Dashboard() {
             </p>
           </section>
 
-          {pairs && (
+          {coverage && (
             <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
@@ -409,42 +370,38 @@ export default function Dashboard() {
 
               <dl className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <dt className="text-slate-500">{t("companiesInRange")}</dt>
-                  <dd className="text-lg font-bold text-amber-700 tabular-nums">
-                    {liveCoverage ? nf.format(liveCoverage.covered) : "…"}
+                  <dt className="text-slate-500">{t("within500")}</dt>
+                  <dd className="text-lg font-bold text-slate-800 tabular-nums">
+                    {coverage.pctCovered500m?.toFixed(1)}%
                   </dd>
                   <dd className="text-[11px] text-slate-400 tabular-nums">
-                    {t("ofCompanies")} {liveCoverage ? nf.format(liveCoverage.denominator) : "…"}
+                    {nf.format(coverage.companiesCovered["500m"])} / {nf.format(coverage.companiesTotal)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">{t("coverageShare")}</dt>
+                  <dt className="text-slate-500">{t("within5km")}</dt>
                   <dd className="text-lg font-bold text-slate-800 tabular-nums">
-                    {liveCoverage?.pct !== null && liveCoverage?.pct !== undefined
-                      ? `${liveCoverage.pct}%`
-                      : "—"}
+                    {coverage.pctCovered5km?.toFixed(1)}%
                   </dd>
-                  <dd className="text-[11px] text-slate-400">
-                    {radiusM >= 1000 ? `${radiusM / 1000} km` : `${radiusM} m`}
+                  <dd className="text-[11px] text-slate-400 tabular-nums">
+                    {nf.format(coverage.companiesCovered["5km"])} / {nf.format(coverage.companiesTotal)}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">{t("chargersNow")}</dt>
                   <dd className="text-lg font-bold text-slate-800 tabular-nums">
-                    {liveCoverage ? nf.format(liveCoverage.chargers) : "…"}
+                    {nf.format(coverage.chargersHgvNow)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">{t("notCovered")}</dt>
+                  <dt className="text-slate-500">{t("chargersNeeded")}</dt>
                   <dd className="text-lg font-bold text-amber-700 tabular-nums">
-                    {notCovered !== null ? nf.format(notCovered) : "—"}
+                    {coverage.chargersNeeded ? nf.format(coverage.chargersNeeded) : "—"}
                   </dd>
                 </div>
               </dl>
               <p className="text-[11px] leading-snug text-slate-400">
-                {liveCoverage && liveCoverage.coveredUnfiltered > liveCoverage.covered
-                  ? `${t("filterCosts")} ${nf.format(liveCoverage.coveredUnfiltered - liveCoverage.covered)} ${t("companiesLost")} · `
-                  : ""}
+                {nf.format(coverage.ringsHgv)} {t("ringsShown")} · {nf.format(coverage.areaKm2Hgv)} km² ·{" "}
                 {t("assumption")}
               </p>
             </section>
@@ -453,7 +410,7 @@ export default function Dashboard() {
           {/* Per-country fleet estimate: how many chargers each country's
               fleet needs, based on the density that country's existing
               chargers already reach. */}
-          {countryRows.length > 0 && (
+          {countryCoverage.length > 0 && (
             <section className="bg-white rounded-xl border border-slate-200 p-4">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
                 {t("fleetByCountry")}
@@ -465,24 +422,24 @@ export default function Dashboard() {
                 <table className="w-full text-xs min-w-[300px] table-fixed">
                   <thead>
                     <tr className="text-slate-400 border-b border-slate-100">
-                      <th className="text-left font-medium py-1 w-[38%]">{t("country")}</th>
-                      <th className="text-right font-medium py-1 w-[18%]">{t("chargersNow")}</th>
-                      <th className="text-right font-medium py-1 w-[20%]">{t("coverageShare")}</th>
-                      <th className="text-right font-medium py-1 w-[24%]">{t("companiesInRange")}</th>
+                      <th className="text-left font-medium py-1 w-[42%]">{t("country")}</th>
+                      <th className="text-right font-medium py-1 w-[20%]">{t("chargersNow")}</th>
+                      <th className="text-right font-medium py-1 w-[16%]">500 m</th>
+                      <th className="text-right font-medium py-1 w-[22%]">{t("chargersNeeded")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {countryRows.slice(0, 24).map((r) => (
+                    {countryCoverage.map((r) => (
                       <tr key={r.country} className="border-t border-slate-100">
                         <td className="py-1.5 pr-1 text-slate-700 truncate">{countryName(r.country)}</td>
                         <td className="py-1.5 text-right tabular-nums text-slate-600">
-                          {nf.format(r.chargers)}
-                        </td>
-                        <td className="py-1.5 text-right tabular-nums font-semibold text-amber-700">
-                          {r.pct !== null ? `${r.pct}%` : "—"}
+                          {nf.format(r.chargersHgv)}
                         </td>
                         <td className="py-1.5 text-right tabular-nums text-slate-600">
-                          {nf.format(r.covered)}
+                          {r.pctCovered500m !== null ? `${r.pctCovered500m}%` : "—"}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums font-semibold text-amber-700">
+                          {r.chargersNeeded !== null ? nf.format(r.chargersNeeded) : "—"}
                         </td>
                       </tr>
                     ))}
@@ -589,27 +546,20 @@ export default function Dashboard() {
               {t("power")}
             </h2>
             <div className="flex flex-wrap gap-2">
-              {POWER_BANDS.map((b, i) => {
-                const on = bands.includes(i);
-                return (
-                  <button
-                    key={b.label}
-                    onClick={() =>
-                      setBands((cur) =>
-                        cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i],
-                      )
-                    }
-                    aria-pressed={on}
-                    className={`px-2.5 py-1 rounded-md border text-xs font-medium tabular-nums transition ${
-                      on
-                        ? "bg-slate-900 border-slate-900 text-white"
-                        : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
-                    }`}
-                  >
-                    {b.label}
-                  </button>
-                );
-              })}
+              {POWER_STEPS.map((step) => (
+                <button
+                  key={step}
+                  onClick={() => setMinKw(step)}
+                  aria-pressed={minKw === step}
+                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    minKw === step
+                      ? "bg-slate-900 border-slate-900 text-white"
+                      : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                  }`}
+                >
+                  {step === 0 ? `${t("power")}: −` : `${step}+ kW`}
+                </button>
+              ))}
             </div>
           </section>
 
@@ -753,8 +703,7 @@ export default function Dashboard() {
             showCoverage={showCoverage}
             radiusM={radiusM}
             showCompanies={showCompanies}
-            powerBands={POWER_BANDS}
-            bands={bands}
+            minKw={minKw}
             tiers={tiers}
             access={access}
             hgvOnly={hgvOnly}

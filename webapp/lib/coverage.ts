@@ -159,6 +159,24 @@ export function coverageByCountry(
   const coveredByCountry = new Map<string, Set<number>>();
   const chargersByCountry = new Map<string, Set<number>>();
 
+  // Count every charger that passes the filter per country, not only the ones
+  // that happen to reach a company. Otherwise the fleet table said Germany had
+  // 351 chargers while the panel above it said 647, which reads as a bug even
+  // though both numbers were "right" under different definitions.
+  for (let i = 0; i < data.chargers.length; i++) {
+    const c = data.chargers[i];
+    if (countryFilter && !countryFilter.has(c[0])) continue;
+    if (accessSet && !accessSet.has(c[1])) continue;
+    if (bandSet && !bandSet.has(c[2])) continue;
+    if (filter.hgvOnly && c[3] !== 1) continue;
+    let cset = chargersByCountry.get(c[0]);
+    if (!cset) {
+      cset = new Set<number>();
+      chargersByCountry.set(c[0], cset);
+    }
+    cset.add(i);
+  }
+
   for (const p of data.pairs) {
     if (p[2] > filter.radiusM) continue;
     const c = data.chargers[p[0]];
@@ -175,24 +193,18 @@ export function coverageByCountry(
       coveredByCountry.set(country, set);
     }
     set.add(p[1]);
-
-    let cset = chargersByCountry.get(country);
-    if (!cset) {
-      cset = new Set<number>();
-      chargersByCountry.set(country, cset);
-    }
-    cset.add(p[0]);
   }
 
   const rows: { country: string; covered: number; denominator: number; pct: number | null; chargers: number }[] = [];
-  for (const [country, set] of coveredByCountry) {
+  for (const [country, cset] of chargersByCountry) {
+    const set = coveredByCountry.get(country) ?? new Set<number>();
     const denominator = data.companiesByCountry[country] ?? 0;
     rows.push({
       country,
       covered: set.size,
       denominator,
       pct: denominator > 0 ? Math.round((1000 * set.size) / denominator) / 10 : null,
-      chargers: chargersByCountry.get(country)?.size ?? 0,
+      chargers: cset.size,
     });
   }
   rows.sort((a, b) => b.covered - a.covered);

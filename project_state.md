@@ -612,3 +612,80 @@ did not exist, so the export died with an ImportError the moment the Europe
 data arrived — after 45 minutes of ingest. The exporter had its own copy of
 the mapping and the coverage export had another. Both now import the one
 mapping.
+
+### Overpass answers a timed-out query with HTTP 200 and 0 elements
+
+This bit twice, in two different places.
+
+**The charge-point query** was fine with a whole-country box (DE: 7,289
+elements in 115 s).
+
+**The company query** was not. It matches far more elements, and Overpass
+answers a query that exceeds its server-side timeout with **HTTP 200 and an
+empty body**. The ingest refuses to accept an empty 200 on purpose (a mirror
+that answers 200 with 0 elements would otherwise wipe a country from the
+database), so 16 countries were recorded as failed: BE, CZ, DK, EE, FI, GR,
+HU, IE, IS, LT, ME, MK, NO, RO, RS, SE.
+
+The quadrant fallback existed but only kicked in AFTER the whole-country query
+had already burned its timeout, and the four quadrants were still too big.
+
+The fix: tile every country box into cells of at most 2 degrees on a side
+BEFORE querying. 565 cells for the 46 countries. Each cell is its own query
+with its own timeout, so a slow cell cannot take the country down, and the
+cells are retried independently. The insert is an upsert on
+`(source, external_id)`, so an element on a cell boundary appearing twice is
+harmless.
+
+### The marker crowding: the white ring was the problem, not the circle
+
+At 3,382 sites on a Europe-wide map, the Benelux/Germany cluster became one
+unreadable blob and buried the basemap labels. The circle radius was reduced
+(2.2-4.6 px at Europe zoom, 5-14 px close in) and, more importantly, the
+**white stroke now fades out as you zoom out**
+(`circle-stroke-opacity` 0 at zoom 3, 1 at zoom 8).
+
+Measured on the rendered frame: in the densest 100x100 cell, the white stroke
+went from a solid mass to **0.1-0.5% of the cell**, and 66-87% of the cell is
+now basemap. The markers still read as a cluster, which is correct at that
+zoom.
+
+### The fleet table overflowed its card
+
+`min-w-[340px]` inside a 332 px card, so the rightmost column was clipped at
+the card edge. Now `table-fixed` with explicit column widths (42/20/16/22%),
+and the measured overflow is 0 px.
+
+### The html lang attribute was hardcoded to "nl"
+
+The language is chosen in the client (from `?lang=` or localStorage), so the
+server-rendered `<html lang="nl">` was always wrong for the other three
+languages. A screen reader announced Dutch on a German page. The attribute is
+now set where the choice is made.
+
+### QA harness: the map needs a real WebGL browser
+
+The Hermes browser backend has WebGL disabled, so MapLibre shows its error
+boundary and the map cannot be photographed there. That is a property of the
+QA host, not of the site. `scripts/qa_map.py` runs Chromium under Xvfb on
+CT141 with `--use-gl=angle --use-angle=swiftshader
+--enable-unsafe-swiftshader`, drives it over CDP, and screenshots at
+1600x1000 and 390x844.
+
+Two traps in that harness:
+
+* Chrome rejects the CDP websocket with 403 unless `--remote-allow-origins=*`
+  is passed. The error message names the flag, but the flag has to be in the
+  launch arguments, not in the websocket call.
+* A hidden tab never paints, and MapLibre only loads its style on the first
+  rendered frame. `Page.bringToFront` plus
+  `Emulation.setFocusEmulationEnabled` fixes it. Without that, the map looks
+  blank and every conclusion drawn from it is wrong.
+
+### Measured scale
+- 46 European countries queried; 44 succeeded for chargers, 4 microstates
+  failed (MT, AD, SM, VA — an empty result is the correct answer for a
+  microstate with no truck-capable charger in OSM).
+- 3,300 truck-capable charge points kept from 17,386 OSM elements.
+- 155,086 European logistics companies in the base layer (GB 36.8k, PL 30.5k,
+  ES 24.1k, IT 20.2k, NL 16.2k, PT 7.0k, CH 5.1k).

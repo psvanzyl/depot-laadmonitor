@@ -63,10 +63,28 @@ def build_query(box: tuple[float, float, float, float]) -> str:
     return f"[out:json][timeout:280];\n(\n{SELECTORS.format(b=b)}\n);\nout center tags;"
 
 
-def quadrants(box: tuple[float, float, float, float]):
+# A country box is cut into cells of at most this many degrees on a side.
+# The company query matches far more elements than the charge-point query,
+# and Overpass answers a timed-out query with HTTP 200 and 0 elements, which
+# the ingest refuses to accept. So the country is split BEFORE the query, not
+# after it has already failed.
+MAX_CELL_DEG = 2.0
+
+
+def tiles(box: tuple[float, float, float, float]) -> list:
+    """Split a country box into cells small enough for Overpass to finish."""
     s, w, n, e = box
-    mx, my = (w + e) / 2, (s + n) / 2
-    return [(s, w, my, mx), (s, mx, my, e), (my, w, n, mx), (my, mx, n, e)]
+    nx = max(1, int((e - w) / MAX_CELL_DEG) + 1)
+    ny = max(1, int((n - s) / MAX_CELL_DEG) + 1)
+    out = []
+    for iy in range(ny):
+        for ix in range(nx):
+            x0 = w + (e - w) * ix / nx
+            x1 = w + (e - w) * (ix + 1) / nx
+            y0 = s + (n - s) * iy / ny
+            y1 = s + (n - s) * (iy + 1) / ny
+            out.append((y0, x0, y1, x1))
+    return out
 
 
 def _fetch(settings, store, run_id, box) -> dict:
@@ -105,13 +123,22 @@ def run(store: Store, settings: Settings, countries: list[str] | None = None) ->
             continue
         run_id = store.start_run("ingest", f"osm_co_eu:{code}")
         try:
-            try:
-                payload = _fetch(settings, store, run_id, box)
-            except RuntimeError:
-                merged = {"elements": []}
-                for q in quadrants(box):
-                    merged["elements"].extend(_fetch(settings, store, run_id, q)["elements"])
-                payload = merged
+            # Tile the box first. One country = many small queries, each with
+            # its own timeout, so a slow cell cannot take the country down.
+            merged = {"elements": []}
+            cell_errors = []
+            for cell in tiles(box):
+                try:
+                    merged["elements"].extend(
+                        _fetch(settings, store, run_id, cell)["elements"]
+                    )
+                except RuntimeError as exc:
+                    cell_errors.append(str(exc)[:100])
+            if not merged["elements"]:
+                raise RuntimeError(
+                    f"every cell failed ({len(cell_errors)} cells): {cell_errors[:2]}"
+                )
+            payload = merged
             stats = {"elements": len(payload["elements"]), "stored": 0, "skipped": 0}
             rows = []
             for el in payload["elements"]:

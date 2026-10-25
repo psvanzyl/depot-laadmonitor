@@ -11,6 +11,7 @@ import {
   type Depots,
   type Summary,
   type Tier,
+  type AfirSummary,
 } from "@/lib/types";
 import {
   bandFor,
@@ -134,6 +135,12 @@ export default function Dashboard() {
   const [companies, setCompanies] = useState<{ type: "FeatureCollection"; features: unknown[] } | null>(null);
   const [showCompanies, setShowCompanies] = useState(true);
   const [bands, setBands] = useState<number[]>(POWER_BANDS.map((_, i) => i));
+  // TENtec / AFIR: a second charging source. `vehicleClass` scopes which class
+  // of AFIR site is drawn and counted; the OSM depot layer is truck-only.
+  const [vehicleClass, setVehicleClass] = useState<"all" | "hdv" | "ldv">("hdv");
+  const [afirHdv, setAfirHdv] = useState<{ type: string; features: unknown[] } | null>(null);
+  const [afirLdv, setAfirLdv] = useState<{ meta: { countries: string[] }; rows: number[][] } | null>(null);
+  const [afirSummary, setAfirSummary] = useState<AfirSummary | null>(null);
   // The coverage pair table: every charger-company pair within 5 km, plus the
   // per-country company counts that form the denominator. Loaded once.
   const [pairs, setPairs] = useState<CoveragePairs | null>(null);
@@ -193,11 +200,30 @@ export default function Dashboard() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`rings ${r.status}`))))
       .then((d) => setCoverageGeo(d))
       .catch(() => setCoverageGeo(null));
+    // AFIR truck sites load with the page (a few thousand points). The car
+    // layer is fetched on demand, never here: it is roughly 95% of the data.
+    fetch(dataUrl("afir_hdv.geojson"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`afir ${r.status}`))))
+      .then((d) => setAfirHdv(d))
+      .catch(() => setAfirHdv(null));
+    fetch(dataUrl("afir_summary.json"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`afirsum ${r.status}`))))
+      .then((d: AfirSummary) => setAfirSummary(d))
+      .catch(() => setAfirSummary(null));
     fetch(dataUrl("depots.geojson"))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`depots ${r.status}`))))
       .then((d: Depots) => setDepots(d))
       .catch((e) => setError(String(e)));
   }, []);
+
+  // Light duty arrives only when the filter asks for it, once.
+  useEffect(() => {
+    if (vehicleClass === "hdv" || afirLdv) return;
+    fetch(dataUrl("afir_ldv.json"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`afirldv ${r.status}`))))
+      .then((d) => setAfirLdv(d))
+      .catch(() => setAfirLdv(null));
+  }, [vehicleClass, afirLdv]);
 
   const all = depots?.features ?? [];
 
@@ -631,6 +657,89 @@ export default function Dashboard() {
             </div>
           </section>
 
+          {/* TENtec / AFIR — the EU official source, beside our own findings. */}
+          <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                {t("afirTitle")}
+              </h2>
+              {afirSummary && (
+                <span className="text-xs tabular-nums text-slate-500">
+                  {nf.format(afirSummary.totalLocations)}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] leading-snug text-slate-500">{t("afirHint")}</p>
+
+            <div className="flex flex-wrap gap-2">
+              {(["all", "hdv", "ldv"] as const).map((v) => {
+                const on = vehicleClass === v;
+                const label =
+                  v === "all" ? t("allVehicles") : v === "hdv" ? t("trucksOnly") : t("carsOnly");
+                return (
+                  <button
+                    key={v}
+                    onClick={() => setVehicleClass(v)}
+                    aria-pressed={on}
+                    className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                      on
+                        ? "bg-amber-600 border-amber-600 text-white"
+                        : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {afirSummary && (
+              <dl className="text-xs space-y-1">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-slate-500">{t("afirLocations")}</dt>
+                  <dd className="tabular-nums font-medium">
+                    {nf.format(
+                      vehicleClass === "ldv"
+                        ? (afirSummary.byVehicleClass.LDV?.locations ?? 0)
+                        : vehicleClass === "all"
+                          ? afirSummary.totalLocations
+                          : (afirSummary.byVehicleClass.HDV?.locations ?? 0),
+                    )}
+                  </dd>
+                </div>
+                {vehicleClass !== "ldv" && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">{t("afirOnCore")}</dt>
+                    <dd className="tabular-nums font-medium">
+                      {nf.format(afirSummary.byVehicleClass.HDV?.onCoreNetwork ?? 0)}
+                    </dd>
+                  </div>
+                )}
+                {vehicleClass !== "ldv" && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">{t("afirTopPower")}</dt>
+                    <dd className="tabular-nums font-medium">
+                      {nf.format(afirSummary.byVehicleClass.HDV?.topKw ?? 0)} kW
+                    </dd>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2">
+                  <dt className="text-slate-500">{t("operability")}</dt>
+                  <dd className="font-medium text-rose-600">{t("notAvailable")}</dd>
+                </div>
+              </dl>
+            )}
+
+            {/* Not a footnote to hide: the absence of a status is a fact about
+                the source, and a blank cell would read as "free". */}
+            <p className="text-[11px] leading-snug text-rose-600/80">
+              {t("operabilityNote")}
+            </p>
+            {vehicleClass !== "hdv" && !afirLdv && (
+              <p className="text-[11px] text-slate-400">{t("afirLoading")}</p>
+            )}
+          </section>
+
           {/* Country filter. */}
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -778,6 +887,9 @@ export default function Dashboard() {
             hgvOnly={hgvOnly}
             countries={countries}
             focus={focus}
+            afirHdv={afirHdv}
+            afirLdv={afirLdv}
+            vehicleClass={vehicleClass}
             onSelect={(id) => {
               const f = all.find((x) => x.properties.id === id);
               if (!f) return;

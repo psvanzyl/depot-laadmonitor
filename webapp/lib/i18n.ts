@@ -84,6 +84,20 @@ const nl: Dict = {
   moreCountries: "meer landen tonen",
   fewerCountries: "minder landen tonen",
 
+  afirTitle: "AFIR-laadlocaties (EU)",
+  afirHint: "Officiële rapportage van de lidstaten aan TENtec, met TEN-T-kernnet en corridors.",
+  vehicleClass: "Voertuigklasse",
+  allVehicles: "Alles",
+  trucksOnly: "Alleen vracht",
+  carsOnly: "Alleen auto's",
+  afirLocations: "AFIR-laadlocaties",
+  afirOnCore: "op TEN-T-kernnet",
+  afirTopPower: "Zwaarste aansluiting",
+  operability: "Beschikbaarheid",
+  notAvailable: "Niet beschikbaar",
+  operabilityNote: "TENtec publiceert geen vrij/bezet-status. Live bezetting vereist een OCPI-feed per operator.",
+  afirLoading: "Auto's laden…",
+
 };
 
 const en: Dict = {
@@ -157,6 +171,20 @@ const en: Dict = {
   moreCountries: "show more countries",
   fewerCountries: "show fewer countries",
 
+  afirTitle: "AFIR charging sites (EU)",
+  afirHint: "Official Member State reporting to TENtec, with TEN-T core network and corridors.",
+  vehicleClass: "Vehicle class",
+  allVehicles: "All",
+  trucksOnly: "Trucks only",
+  carsOnly: "Cars only",
+  afirLocations: "AFIR charging sites",
+  afirOnCore: "on TEN-T core network",
+  afirTopPower: "Highest connection",
+  operability: "Availability",
+  notAvailable: "Not available",
+  operabilityNote: "TENtec publishes no free/busy status. Live occupancy needs an OCPI feed per operator.",
+  afirLoading: "Loading cars…",
+
 };
 
 const de: Dict = {
@@ -201,6 +229,20 @@ const de: Dict = {
   moreCountries: "mehr Länder zeigen",
   fewerCountries: "weniger Länder zeigen",
 
+  afirTitle: "AFIR-Ladestandorte (EU)",
+  afirHint: "Offizielle Meldung der Mitgliedstaaten an TENtec, mit TEN-T-Kernnetz und Korridoren.",
+  vehicleClass: "Fahrzeugklasse",
+  allVehicles: "Alle",
+  trucksOnly: "Nur Lkw",
+  carsOnly: "Nur Pkw",
+  afirLocations: "AFIR-Ladestandorte",
+  afirOnCore: "im TEN-T-Kernnetz",
+  afirTopPower: "Stärkster Anschluss",
+  operability: "Verfügbarkeit",
+  notAvailable: "Nicht verfügbar",
+  operabilityNote: "TENtec veröffentlicht keinen Frei/Belegt-Status. Live-Belegung braucht einen OCPI-Feed je Betreiber.",
+  afirLoading: "Pkw werden geladen…",
+
 };
 
 const fr: Dict = {
@@ -244,6 +286,20 @@ const fr: Dict = {
   fleetByCountryHint: "Chargeurs nécessaires à chaque pays pour une couverture totale, d'après la densité d'entreprises que ses chargeurs actuels atteignent déjà. Une estimation, pas une mesure.",
   moreCountries: "afficher plus de pays",
   fewerCountries: "afficher moins de pays",
+
+  afirTitle: "Sites de recharge AFIR (UE)",
+  afirHint: "Déclaration officielle des États membres à TENtec, avec réseau central RTE-T et corridors.",
+  vehicleClass: "Classe de véhicule",
+  allVehicles: "Tout",
+  trucksOnly: "Camions seuls",
+  carsOnly: "Voitures seules",
+  afirLocations: "Sites de recharge AFIR",
+  afirOnCore: "sur le réseau central RTE-T",
+  afirTopPower: "Raccordement le plus puissant",
+  operability: "Disponibilité",
+  notAvailable: "Non disponible",
+  operabilityNote: "TENtec ne publie pas d'état libre/occupé. L'occupation en direct exige un flux OCPI par opérateur.",
+  afirLoading: "Chargement des voitures…",
 
 };
 

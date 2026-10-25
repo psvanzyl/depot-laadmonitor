@@ -1,0 +1,163 @@
+{
+  "source": "TENtec / AFIR (European Commission)",
+  "totalLocations": 6085,
+  "byVehicleClass": {
+    "HDV": {
+      "locations": 6085,
+      "onCoreNetwork": 2234,
+      "withOperability": 0,
+      "topKw": 1200.0
+    }
+  },
+  "byCountry": [
+    {
+      "country": "DE",
+      "locations": 1999,
+      "hdv": 1999
+    },
+    {
+      "country": "SE",
+      "locations": 630,
+      "hdv": 630
+    },
+    {
+      "country": "NO",
+      "locations": 502,
+      "hdv": 502
+    },
+    {
+      "country": "FR",
+      "locations": 470,
+      "hdv": 470
+    },
+    {
+      "country": "DK",
+      "locations": 358,
+      "hdv": 358
+    },
+    {
+      "country": "BE",
+      "locations": 297,
+      "hdv": 297
+    },
+    {
+      "country": "NL",
+      "locations": 283,
+      "hdv": 283
+    },
+    {
+      "country": "AT",
+      "locations": 259,
+      "hdv": 259
+    },
+    {
+      "country": "ES",
+      "locations": 187,
+      "hdv": 187
+    },
+    {
+      "country": "FI",
+      "locations": 175,
+      "hdv": 175
+    },
+    {
+      "country": "IT",
+      "locations": 141,
+      "hdv": 141
+    },
+    {
+      "country": "PL",
+      "locations": 132,
+      "hdv": 132
+    },
+    {
+      "country": "CH",
+      "locations": 96,
+      "hdv": 96
+    },
+    {
+      "country": "SK",
+      "locations": 85,
+      "hdv": 85
+    },
+    {
+      "country": "PT",
+      "locations": 78,
+      "hdv": 78
+    },
+    {
+      "country": "LU",
+      "locations": 54,
+      "hdv": 54
+    },
+    {
+      "country": "CZ",
+      "locations": 47,
+      "hdv": 47
+    },
+    {
+      "country": "BG",
+      "locations": 42,
+      "hdv": 42
+    },
+    {
+      "country": "RO",
+      "locations": 38,
+      "hdv": 38
+    },
+    {
+      "country": "IE",
+      "locations": 37,
+      "hdv": 37
+    },
+    {
+      "country": "EL",
+      "locations": 29,
+      "hdv": 29
+    },
+    {
+      "country": "HU",
+      "locations": 28,
+      "hdv": 28
+    },
+    {
+      "country": "HR",
+      "locations": 26,
+      "hdv": 26
+    },
+    {
+      "country": "IS",
+      "locations": 25,
+      "hdv": 25
+    },
+    {
+      "country": "EE",
+      "locations": 19,
+      "hdv": 19
+    },
+    {
+      "country": "LT",
+      "locations": 18,
+      "hdv": 18
+    },
+    {
+      "country": "UA",
+      "locations": 14,
+      "hdv": 14
+    },
+    {
+      "country": "SI",
+      "locations": 12,
+      "hdv": 12
+    },
+    {
+      "country": "LV",
+      "locations": 4,
+      "hdv": 4
+    }
+  ],
+  "operability": {
+    "available": false,
+    "note": "TENtec publishes no plug free/busy status: its recharging layer has 24 fields and none of them is availability. Live occupancy needs an OCPI/OICP feed per operator."
+  }
+}

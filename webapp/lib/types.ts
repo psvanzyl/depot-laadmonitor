@@ -83,3 +83,15 @@ export const CHANNEL_LABEL: Record<string, string> = {
   permit: "vergunning",
   osm: "OSM",
 };
+
+/** TENtec / AFIR summary, straight from afir_summary.json. */
+export interface AfirSummary {
+  source: string;
+  totalLocations: number;
+  byVehicleClass: Record<
+    string,
+    { locations: number; onCoreNetwork: number; withOperability: number; topKw: number }
+  >;
+  byCountry: { country: string; locations: number; hdv: number }[];
+  operability: { available: boolean; note: string };
+}

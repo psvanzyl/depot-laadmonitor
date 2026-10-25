@@ -1,51 +1,51 @@
 {
-  "generatedAt": "2026-10-24T10:10:57+00:00",
+  "generatedAt": "2026-10-25T05:32:43+00:00",
   "sites": {
-    "total": 3382,
-    "scored": 3557,
+    "total": 3265,
+    "scored": 3440,
     "withoutCoords": 175,
     "byTier": {
       "A": 1498,
-      "B": 443,
-      "C": 1441
+      "B": 433,
+      "C": 1334
     },
-    "hgv": 2051,
+    "hgv": 2024,
     "byAccess": {
-      "public": 1813,
-      "semi_public": 548,
-      "private": 189,
-      "unknown": 832
+      "public": 1816,
+      "semi_public": 538,
+      "private": 186,
+      "unknown": 725
     }
   },
   "power": {
-    "totalKw": 858277.5,
-    "sitesWithKw": 3239
+    "totalKw": 835393.9,
+    "sitesWithKw": 3124
   },
   "byProvince": {
-    "Onbekend": 2821,
-    "Zuid-Holland": 101,
-    "Noord-Holland": 85,
-    "Noord-Brabant": 82,
-    "Gelderland": 61,
-    "Overijssel": 54,
+    "Onbekend": 2701,
+    "Zuid-Holland": 103,
+    "Noord-Holland": 86,
+    "Noord-Brabant": 83,
+    "Gelderland": 62,
     "Utrecht": 54,
-    "Limburg": 41,
-    "Drenthe": 20,
+    "Overijssel": 53,
+    "Limburg": 40,
+    "Drenthe": 21,
     "Fryslân": 19,
     "Groningen": 16,
-    "Flevoland": 15,
+    "Flevoland": 14,
     "Zeeland": 13
   },
   "byChannel": {
     "etrucker": 1472,
-    "osm": 1412,
+    "osm": 1291,
     "depotcharge": 209,
-    "chargepoint": 172,
+    "chargepoint": 175,
     "news": 88,
-    "permit": 50
+    "permit": 51
   },
   "precision": {
-    "premises": 3298,
+    "premises": 3181,
     "address": 75,
     "signal": 9
   },

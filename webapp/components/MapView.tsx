@@ -50,6 +50,12 @@ interface Props {
   hgvOnly: boolean;
   focus: { id: string; lon: number; lat: number } | null;
   onSelect: (id: string) => void;
+  /** TENtec / AFIR truck sites. A second source beside the OSM depots. */
+  afirHdv?: { type: string; features: unknown[] } | null;
+  /** TENtec / AFIR light-duty sites, compact rows, fetched on demand. */
+  afirLdv?: { meta: { countries: string[] }; rows: number[][] } | null;
+  /** Which AFIR class to draw. The OSM depot layer is truck-only either way. */
+  vehicleClass?: "all" | "hdv" | "ldv";
 }
 
 function escapeHtml(s: string): string {
@@ -106,6 +112,9 @@ export default function MapView({
   hgvOnly,
   focus,
   onSelect,
+  afirHdv = null,
+  afirLdv = null,
+  vehicleClass = "hdv",
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
@@ -192,6 +201,69 @@ export default function MapView({
 
   // Source + layer, added once the style is ready.
   useEffect(() => {
+  // TENtec / AFIR layers. Drawn under the depot markers: the depot layer is the
+  // product's own finding, the AFIR layer is the official context around it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const ensure = () => {
+      const wantHdv = vehicleClass !== "ldv";
+      const wantLdv = vehicleClass !== "hdv";
+
+      if (afirHdv && !map.getSource("afir-hdv")) {
+        map.addSource("afir-hdv", { type: "geojson", data: afirHdv as never });
+        map.addLayer({
+          id: "afir-hdv",
+          type: "circle",
+          source: "afir-hdv",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 1.8, 7, 3.2, 11, 6],
+            "circle-color": "#f59e0b",
+            "circle-opacity": 0.55,
+            "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 3, 0, 7, 0.4, 11, 0.9],
+            "circle-stroke-color": "#b45309",
+            "circle-stroke-opacity": 0.7,
+          },
+        });
+      }
+      // The compact LDV rows become a GeoJSON source here, not on the server:
+      // a flat array is a quarter of the bytes and this runs once, on toggle.
+      if (afirLdv && !map.getSource("afir-ldv")) {
+        const cc = afirLdv.meta.countries;
+        map.addSource("afir-ldv", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: afirLdv.rows.map((r: number[]) => ({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [r[0], r[1]] },
+              properties: { kw: r[2], cc: cc[r[3]] ?? null, nc: r[4] },
+            })),
+          } as never,
+        });
+        map.addLayer({
+          id: "afir-ldv",
+          type: "circle",
+          source: "afir-ldv",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 1.1, 7, 1.6, 11, 2.6],
+            "circle-color": "#38bdf8",
+            "circle-opacity": 0.35,
+            "circle-stroke-width": 0,
+          },
+        });
+      }
+
+      for (const [id, on] of [["afir-hdv", wantHdv], ["afir-ldv", wantLdv]] as const) {
+        if (map.getLayer(id)) {
+          map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+        }
+      }
+    };
+    if (map.isStyleLoaded()) ensure();
+    else map.once("load", ensure);
+  }, [afirHdv, afirLdv, vehicleClass]);
+
     const map = mapRef.current;
     if (!map || !depots) return;
     const ensure = () => {

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Theme variants: `.dark` on <html>, set before first paint. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
@@ -9,6 +12,36 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 }
+
+/* Light is the default. `html.dark` inverts the slate scale and the amber
+   accents, which is the whole theme: the components never mention a theme.
+   Contrast is checked against these values, not guessed. */
+html.dark {
+  color-scheme: dark;
+  --background: #070a10;
+  --foreground: #e7eefb;
+
+  --color-white: #101725;      /* cards, header, panels */
+  --color-slate-50: #0b1018;   /* page wells */
+  --color-slate-100: #151d2c;  /* hover, chips */
+  --color-slate-200: #1d2739;  /* borders */
+  --color-slate-300: #24304a;  /* input borders */
+  --color-slate-400: #8fa0bb;  /* tertiary text */
+  --color-slate-500: #a3b2c9;  /* secondary text */
+  --color-slate-600: #bac6d8;
+  --color-slate-700: #d2dbea;
+  --color-slate-800: #e2e9f5;
+  --color-slate-900: #e7eefb;  /* primary text */
+
+  --color-amber-50: #211a08;
+  --color-amber-100: #2e2410;
+  --color-amber-200: #4a3a16;
+  --color-amber-300: #c9922f;
+  --color-amber-500: #f0a63a;
+  --color-amber-600: #f7bc63;
+  --color-amber-700: #fbcb85;
+}
+
 
 html,
 body {

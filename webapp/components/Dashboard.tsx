@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { DexLogo } from "@/components/DexLogo";
+import ThemeToggle from "@/components/ThemeToggle";
 import { MapBoundary } from "@/components/MapBoundary";
 import { LANGS, isLang, makeT, type Lang } from "@/lib/i18n";
 import {
@@ -450,8 +451,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col">
-      <header className="bg-white border-b border-slate-200 shadow-sm z-20">
-        <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-3 px-3 sm:px-5">
           <DexLogo />
           <p className="text-xs text-slate-500 hidden md:block">{t("tagline")}</p>
           <div className="ml-auto flex items-center gap-3">
@@ -475,6 +476,7 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
+            <ThemeToggle />
           </div>
         </div>
       </header>

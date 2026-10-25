@@ -380,7 +380,14 @@ export default function MapView({
     const map = mapRef.current;
     if (!map || !coverage) return;
     const ensure = () => {
-      if (map.getSource("coverage")) return;
+      const existing = map.getSource("coverage");
+      if (existing) {
+        // The rings are rebuilt on every radius and filter change now, so the
+        // source has to take the new data. Returning here would keep the first
+        // frame on screen forever.
+        (existing as maplibregl.GeoJSONSource).setData(coverage as never);
+        return;
+      }
       map.addSource("coverage", { type: "geojson", data: coverage as never });
       const before = map.getLayer("depots") ? "depots" : undefined;
       const radiusFilter = ["==", ["get", "radiusM"], radiusRef.current];

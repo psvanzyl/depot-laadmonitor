@@ -1,37 +1,46 @@
 /**
  * Live coverage calculation for DepotChargeDex.
  *
- * The question the site has to answer:
- *
  *   "With the filters I have set, what share of the transport companies
  *    within range of a charging station is covered?"
  *
- * That depends on three things at once:
+ * The radius reaches 20 km now, and that changed the data layout.
  *
- *   - the radius (500 m, 1 km, 2 km, 5 km)
- *   - the filter (country, access class, power band, HGV only)
- *   - the company set (the denominator)
+ * The old file held every pair within 5 km with a distance on each pair. At
+ * 20 km that set is 2,069,191 pairs and about 37 MB of JSON, and asking the
+ * database per slider move costs about a second. Neither is a filter.
  *
- * The pair table ships precomputed from the server: for every
- * charger-company pair within 5 km, the charger index, the company index and
- * the distance in metres. From that, the covered share for any filter is a
- * DISTINCT count over the pairs that pass the filter.
+ * So each radius ships its own file of 32-bit integers:
  *
- * The count must be a distinct count over COMPANIES, not over pairs. A
- * company with four chargers within range is still one company. The server
- * runs the same maths (see scripts/export_coverage_pairs.py) and prints the
- * default case, so the two can be compared.
+ *     (chargerIndex << companyBits) | companyIndex
+ *
+ * The radius is implicit in which file was loaded, so a 1 km file cannot
+ * contain a 2 km pair and no distance needs storing. The browser fetches only
+ * the selected radius: 0.1 MB at 1 km, 8.3 MB once at 20 km.
+ *
+ * The count is DISTINCT over companies, never over pairs. A company with four
+ * chargers within range is one company. The server runs the same maths at
+ * export time and prints it, so the two can be compared.
  */
 
-export interface CoveragePairs {
+export type ChargerRow = [
+  country: string,
+  accessClass: string,
+  powerBand: number,
+  hgv: number,
+  tier: string,
+  source: number,
+  lon: number,
+  lat: number,
+];
+
+export interface CoverageMeta {
   radii: number[];
   powerBands: { lo: number; hi: number | null }[];
   accessClasses: string[];
-  /** Per charger: [country, accessClass, powerBandIndex, hgvFlag, tier, source]
-   *  source 0 = our own scored sites, 1 = the TENtec / AFIR layer. */
-  chargers: [string, string, number, number, string, number][];
-  /** Per pair: [chargerIndex, companyIndex, distanceMetres] */
-  pairs: [number, number, number][];
+  /** bits reserved for the company index in a packed pair */
+  companyBits: number;
+  chargers: ChargerRow[];
   companiesByCountry: Record<string, number>;
   companiesTotal: number;
 }
@@ -50,20 +59,31 @@ export interface CoverageFilter {
 }
 
 export interface CoverageResult {
-  /** distinct companies within range of at least one matching charger */
   covered: number;
-  /** the companies that could be covered */
   denominator: number;
-  /** share in percent, or null when there is no denominator */
   pct: number | null;
-  /** chargers that pass the filter */
   chargers: number;
-  /** companies within range of ANY charger, ignoring the filter */
   coveredUnfiltered: number;
 }
 
-/** The power band a charger with this kW falls into. Mirrors the server. */
-export function bandFor(powerKw: number | null, bands: { lo: number; hi: number | null }[]): number {
+export interface CoverageCountryRow {
+  country: string;
+  covered: number;
+  denominator: number;
+  pct: number | null;
+  chargers: number;
+}
+
+const maskFor = (bits: number) => (1 << bits) - 1;
+
+/**
+ * Which power band a charger falls in. A charger with no stated power lands in
+ * band 0, the same rule the exporter uses, so the map and the count agree.
+ */
+export function bandFor(
+  powerKw: number | null,
+  bands: { lo: number; hi: number | null }[],
+): number {
   if (powerKw === null || powerKw === undefined) return 0;
   for (let i = 0; i < bands.length; i++) {
     const b = bands[i];
@@ -72,151 +92,139 @@ export function bandFor(powerKw: number | null, bands: { lo: number; hi: number 
   return bands.length - 1;
 }
 
-/**
- * Count the coverage for a filter.
- *
- * This runs on every filter change, so it is written as one pass over the
- * pair list with the filter tested inline. 47,616 pairs is small enough that
- * this takes a few milliseconds; no index is needed.
- */
-export function computeCoverage(
-  data: CoveragePairs,
+/** Chargers whose attributes pass the filter. Shared by both functions. */
+function matchingChargers(
+  meta: CoverageMeta,
   filter: CoverageFilter,
-): CoverageResult {
-  const countrySet = filter.countries ? new Set(filter.countries) : null;
+): { chargers: number; ok: Uint8Array } {
   const accessSet = filter.access ? new Set(filter.access) : null;
   const bandSet = filter.bands ? new Set(filter.bands) : null;
-
-  // The distinct companies covered, and the same count without the filter,
-  // so the UI can show how much the filter costs.
-  const coveredSet = new Set<number>();
+  const countrySet = filter.countries ? new Set(filter.countries) : null;
   const sourceSet =
     filter.sources === undefined || filter.sources === null
       ? null
       : new Set<number>(filter.sources);
 
-  const unfilteredSet = new Set<number>();
-
-  const { chargers, pairs } = data;
-
-  // Chargers that pass the filter. Counted over the charger table, not over
-  // the pairs: a charger with no transport company within 5 km is still a
-  // charger that passes the filter, and reporting only the ones that happen
-  // to reach a company made the count look like a third of reality.
-  let matchingChargers = 0;
-  for (let i = 0; i < chargers.length; i++) {
-    const c = chargers[i];
+  const ok = new Uint8Array(meta.chargers.length);
+  let n = 0;
+  for (let i = 0; i < meta.chargers.length; i++) {
+    const c = meta.chargers[i];
     if (countrySet && !countrySet.has(c[0])) continue;
     if (accessSet && !accessSet.has(c[1])) continue;
     if (bandSet && !bandSet.has(c[2])) continue;
     if (filter.hgvOnly && c[3] !== 1) continue;
     if (sourceSet && !sourceSet.has(c[5])) continue;
-    matchingChargers += 1;
+    ok[i] = 1;
+    n += 1;
   }
+  return { chargers: n, ok };
+}
+
+export function computeCoverage(
+  meta: CoverageMeta,
+  pairs: Uint32Array,
+  filter: CoverageFilter,
+): CoverageResult {
+  const { chargers: nChargers, ok } = matchingChargers(meta, filter);
+  const countrySet = filter.countries ? new Set(filter.countries) : null;
+  const mask = maskFor(meta.companyBits);
+
+  const covered = new Set<number>();
+  const unfiltered = new Set<number>();
+
   for (let i = 0; i < pairs.length; i++) {
-    const p = pairs[i];
-    if (p[2] > filter.radiusM) continue;
-    const c = chargers[p[0]];
-    if (!c) continue;
-
-    const country = c[0];
-    const accessClass = c[1];
-    const band = c[2];
-    const hgv = c[3] === 1;
-
-    unfilteredSet.add(p[1]);
-
-    if (countrySet && !countrySet.has(country)) continue;
-    if (accessSet && !accessSet.has(accessClass)) continue;
-    if (bandSet && !bandSet.has(band)) continue;
-    if (filter.hgvOnly && !hgv) continue;
-    if (sourceSet && !sourceSet.has(c[5])) continue;
-
-    coveredSet.add(p[1]);
+    const v = pairs[i];
+    const ci = v >>> meta.companyBits;
+    const company = v & mask;
+    // Every pair in this file is inside the selected radius, so the unfiltered
+    // set ignores the attribute filters but keeps the radius: that is what
+    // "companies within range of ANY charger" means.
+    unfiltered.add(company);
+    if (!ok[ci]) continue;
+    covered.add(company);
   }
 
+  // The denominator is every company in the selected countries, covered or not.
   let denominator = 0;
   if (countrySet) {
-    for (const cc of countrySet) denominator += data.companiesByCountry[cc] ?? 0;
+    for (const cc of countrySet) denominator += meta.companiesByCountry[cc] ?? 0;
   } else {
-    denominator = data.companiesTotal;
+    denominator = meta.companiesTotal;
   }
 
   return {
-    covered: coveredSet.size,
+    covered: covered.size,
     denominator,
-    pct: denominator > 0 ? Math.round((1000 * coveredSet.size) / denominator) / 10 : null,
-    chargers: matchingChargers,
-    coveredUnfiltered: unfilteredSet.size,
+    pct: denominator > 0 ? Math.round((1000 * covered.size) / denominator) / 10 : null,
+    chargers: nChargers,
+    coveredUnfiltered: unfiltered.size,
   };
 }
 
 /**
- * The per-country coverage rows for the fleet table.
- *
- * The same pair table, split by the country of the charger. A company counts
- * for a country when it is covered by a charger in that country, so the rows
- * add up to the total.
+ * Per-country coverage rows for the fleet table. A company counts for the
+ * country of the charger that reaches it, so the rows answer "how covered is
+ * each country", not "how many Belgian companies does a German charger serve".
  */
 export function coverageByCountry(
-  data: CoveragePairs,
+  meta: CoverageMeta,
+  pairs: Uint32Array,
   filter: CoverageFilter,
-): { country: string; covered: number; denominator: number; pct: number | null; chargers: number }[] {
-  const accessSet = filter.access ? new Set(filter.access) : null;
-  const bandSet = filter.bands ? new Set(filter.bands) : null;
-  const countryFilter = filter.countries ? new Set(filter.countries) : null;
+): CoverageCountryRow[] {
+  const { ok } = matchingChargers(meta, filter);
+  const countrySet = filter.countries ? new Set(filter.countries) : null;
+  const mask = maskFor(meta.companyBits);
 
-  const coveredByCountry = new Map<string, Set<number>>();
-  const chargersByCountry = new Map<string, Set<number>>();
+  const coveredBy = new Map<string, Set<number>>();
+  const chargersBy = new Map<string, number>();
 
-  // Count every charger that passes the filter per country, not only the ones
-  // that happen to reach a company. Otherwise the fleet table said Germany had
-  // 351 chargers while the panel above it said 647, which reads as a bug even
-  // though both numbers were "right" under different definitions.
-  for (let i = 0; i < data.chargers.length; i++) {
-    const c = data.chargers[i];
-    if (countryFilter && !countryFilter.has(c[0])) continue;
-    if (accessSet && !accessSet.has(c[1])) continue;
-    if (bandSet && !bandSet.has(c[2])) continue;
-    if (filter.hgvOnly && c[3] !== 1) continue;
-    let cset = chargersByCountry.get(c[0]);
-    if (!cset) {
-      cset = new Set<number>();
-      chargersByCountry.set(c[0], cset);
-    }
-    cset.add(i);
+  for (let i = 0; i < meta.chargers.length; i++) {
+    if (!ok[i]) continue;
+    const cc = meta.chargers[i][0];
+    chargersBy.set(cc, (chargersBy.get(cc) ?? 0) + 1);
   }
 
-  for (const p of data.pairs) {
-    if (p[2] > filter.radiusM) continue;
-    const c = data.chargers[p[0]];
-    if (!c) continue;
-    const country = c[0];
-    if (countryFilter && !countryFilter.has(country)) continue;
-    if (accessSet && !accessSet.has(c[1])) continue;
-    if (bandSet && !bandSet.has(c[2])) continue;
-    if (filter.hgvOnly && c[3] !== 1) continue;
-
-    let set = coveredByCountry.get(country);
+  for (let i = 0; i < pairs.length; i++) {
+    const v = pairs[i];
+    const ci = v >>> meta.companyBits;
+    if (!ok[ci]) continue;
+    const cc = meta.chargers[ci][0];
+    let set = coveredBy.get(cc);
     if (!set) {
       set = new Set<number>();
-      coveredByCountry.set(country, set);
+      coveredBy.set(cc, set);
     }
-    set.add(p[1]);
+    set.add(v & mask);
   }
 
-  const rows: { country: string; covered: number; denominator: number; pct: number | null; chargers: number }[] = [];
-  for (const [country, cset] of chargersByCountry) {
-    const set = coveredByCountry.get(country) ?? new Set<number>();
-    const denominator = data.companiesByCountry[country] ?? 0;
+  const rows: CoverageCountryRow[] = [];
+  for (const [country, n] of chargersBy) {
+    if (countrySet && !countrySet.has(country)) continue;
+    const denominator = meta.companiesByCountry[country] ?? 0;
+    const coveredCount = coveredBy.get(country)?.size ?? 0;
     rows.push({
       country,
-      covered: set.size,
+      covered: coveredCount,
       denominator,
-      pct: denominator > 0 ? Math.round((1000 * set.size) / denominator) / 10 : null,
-      chargers: cset.size,
+      pct: denominator > 0 ? Math.round((1000 * coveredCount) / denominator) / 10 : null,
+      chargers: n,
     });
   }
-  rows.sort((a, b) => b.covered - a.covered);
+  rows.sort((a, b) => b.chargers - a.chargers);
   return rows;
+}
+
+
+/**
+ * The charger indexes that pass the filter. The map uses this to draw the
+ * radius circle around exactly the chargers the coverage number counts.
+ */
+export function matchingChargerIndexes(
+  meta: CoverageMeta,
+  filter: CoverageFilter,
+): number[] {
+  const { ok } = matchingChargers(meta, filter);
+  const out: number[] = [];
+  for (let i = 0; i < ok.length; i++) if (ok[i]) out.push(i);
+  return out;
 }

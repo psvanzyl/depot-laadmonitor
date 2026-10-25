@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { DexLogo } from "@/components/DexLogo";
 import { MapBoundary } from "@/components/MapBoundary";
@@ -16,8 +16,9 @@ import {
 import {
   bandFor,
   computeCoverage,
+  matchingChargerIndexes,
   coverageByCountry,
-  type CoveragePairs,
+  type CoverageMeta,
 } from "@/lib/coverage";
 
 const COUNTRY_NAME: Record<string, string> = {
@@ -92,7 +93,16 @@ const POWER_BANDS = [
   { lo: 350, hi: null, label: "350+ kW" },
 ];
 /** Radii the map can draw, the way the pakketpuntenviewer lets you pick one. */
-const RADII = [500, 1000, 2000, 5000];
+/** Coverage radii in metres. The pair matrix ships one file per radius. */
+const RADII = [1000, 2500, 5000, 10000, 20000];
+
+/** "1 km", "2,5 km", "20 km" — the decimal separator follows the language. */
+function radiusLabel(r: number, lang: string): string {
+  const km = r / 1000;
+  const sep = lang === "en" ? "." : ",";
+  const text = Number.isInteger(km) ? String(km) : String(km).replace(".", sep);
+  return `${text} km`;
+}
 
 type Coverage = {
   radiusM: number;
@@ -125,9 +135,8 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [depots, setDepots] = useState<Depots | null>(null);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
-  const [coverageGeo, setCoverageGeo] = useState<{ type: string; features: unknown[] } | null>(null);
   const [showCoverage, setShowCoverage] = useState(true);
-  const [radiusM, setRadiusM] = useState(500);
+  const [radiusM, setRadiusM] = useState(1000);
   const [tiers, setTiers] = useState<Tier[]>(ALL_TIERS);
   const [access, setAccess] = useState<AccessClass[]>(ALL_ACCESS);
   const [countries, setCountries] = useState<string[] | null>(null);
@@ -147,7 +156,12 @@ export default function Dashboard() {
   const [afirSummary, setAfirSummary] = useState<AfirSummary | null>(null);
   // The coverage pair table: every charger-company pair within 5 km, plus the
   // per-country company counts that form the denominator. Loaded once.
-  const [pairs, setPairs] = useState<CoveragePairs | null>(null);
+  const [covMeta, setCovMeta] = useState<CoverageMeta | null>(null);
+  // One packed array per radius, kept after the first fetch so moving the
+  // slider back and forth costs nothing.
+  const [pairData, setPairData] = useState<Uint32Array | null>(null);
+  const [pairsLoading, setPairsLoading] = useState(false);
+  const pairsCache = useRef<Map<number, Uint32Array>>(new Map());
   const [focus, setFocus] = useState<{ id: string; lon: number; lat: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAllCountries, setShowAllCountries] = useState(false);
@@ -196,14 +210,13 @@ export default function Dashboard() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`coverage ${r.status}`))))
       .then((d: Coverage) => setCoverage(d))
       .catch(() => setCoverage(null));
-    fetch(dataUrl("coverage_pairs.json"))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`pairs ${r.status}`))))
-      .then((d: CoveragePairs) => setPairs(d))
-      .catch(() => setPairs(null));
-    fetch(dataUrl("coverage.geojson"))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`rings ${r.status}`))))
-      .then((d) => setCoverageGeo(d))
-      .catch(() => setCoverageGeo(null));
+    fetch(dataUrl("coverage_meta.json"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`covmeta ${r.status}`))))
+      .then((d: CoverageMeta) => setCovMeta(d))
+      .catch(() => setCovMeta(null));
+    // The radius rings are not fetched: they are built from the charger
+    // coordinates and the selected radius, so they always match the filter and
+    // the number on screen. This also removes a 7 MB download per page load.
     // AFIR truck sites load with the page (a few thousand points). The car
     // layer is fetched on demand, never here: it is roughly 95% of the data.
     fetch(dataUrl("afir_hdv.geojson"))
@@ -228,6 +241,38 @@ export default function Dashboard() {
       .then((d) => setAfirLdv(d))
       .catch(() => setAfirLdv(null));
   }, [vehicleClass, afirLdv]);
+
+  // The radius file. 1 km is 0.1 MB and 20 km is 8.3 MB, so this waits for the
+  // radius instead of downloading everything up front.
+  useEffect(() => {
+    const cached = pairsCache.current.get(radiusM);
+    if (cached) {
+      setPairData(cached);
+      return;
+    }
+    let cancelled = false;
+    setPairsLoading(true);
+    fetch(dataUrl(`coverage_${radiusM}.bin`))
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`pairs ${r.status}`))))
+      .then((buf) => {
+        // 24-byte header: magic, version, radius, charger count, company count,
+        // pair count. The payload starts at a multiple of four, so it can be
+        // wrapped instead of copied.
+        const pairs = new Uint32Array(buf, 24);
+        pairsCache.current.set(radiusM, pairs);
+        if (!cancelled) setPairData(pairs);
+      })
+      .catch(() => {
+        if (!cancelled) setPairData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPairsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [radiusM]);
+
 
   const all = depots?.features ?? [];
 
@@ -303,19 +348,52 @@ export default function Dashboard() {
       sources: sources.length === 2 ? null : sources,
     }),
     [radiusM, countries, access, bands, hgvOnly, sources],
-  );
 
-  // The live coverage. Recomputed on every filter change: 47k pairs is a
-  // few milliseconds, so no debounce is needed.
+  );
+  // The radius circles, built here from the chargers that passed the filter.
+  // 16 points per circle: at continental zoom that is already a smooth ring,
+  // and 20 km is about 8 km per pixel so more points would be invisible.
+  const coverageRings = useMemo(() => {
+    if (!covMeta || !covFilter) return null;
+    const idx = matchingChargerIndexes(covMeta, covFilter);
+    const dLat = radiusM / 111_320;
+    const features = [];
+    for (const i of idx) {
+      const c = covMeta.chargers[i];
+      const lon = c[6];
+      const lat = c[7];
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      const dLon = dLat / Math.max(0.15, Math.cos((lat * Math.PI) / 180));
+      const ring: [number, number][] = [];
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        ring.push([
+          Math.round((lon + dLon * Math.cos(a)) * 1e5) / 1e5,
+          Math.round((lat + dLat * Math.sin(a)) * 1e5) / 1e5,
+        ]);
+      }
+      ring.push(ring[0]);
+      features.push({
+        type: "Feature",
+        properties: { radiusM, tier: c[4] },
+        geometry: { type: "Polygon", coordinates: [ring] },
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }, [covMeta, covFilter, radiusM]);
+
+  // The live coverage. Recomputed on every filter change. The largest case is
+  // 2.07M pairs at 20 km, which is one pass over a Uint32Array: a few tens of
+  // milliseconds, so no debounce is needed.
   const liveCoverage = useMemo(
-    () => (pairs ? computeCoverage(pairs, covFilter) : null),
-    [pairs, covFilter],
+    () => (covMeta && pairData ? computeCoverage(covMeta, pairData, covFilter) : null),
+    [covMeta, pairData, covFilter],
   );
 
   // Per-country coverage under the same filter, for the fleet table.
   const countryRows = useMemo(
-    () => (pairs ? coverageByCountry(pairs, covFilter) : []),
-    [pairs, covFilter],
+    () => (covMeta && pairData ? coverageByCountry(covMeta, pairData, covFilter) : []),
+    [covMeta, pairData, covFilter],
   );
 
   // The companies still out of range. A hard count from the pair table, not
@@ -413,7 +491,7 @@ export default function Dashboard() {
               </h2>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-amber-700 tabular-nums">
-                  {radiusM >= 1000 ? `${radiusM / 1000} km` : `${radiusM} m`}
+                  {radiusLabel(radiusM, lang)}
                 </span>
                 <button
                   onClick={() => setShowCoverage((v) => !v)}
@@ -451,7 +529,7 @@ export default function Dashboard() {
                     radiusM === r ? "font-semibold text-amber-700" : "hover:text-amber-600"
                   }`}
                 >
-                  {r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                  {radiusLabel(r, lang)}
                 </button>
               ))}
             </div>
@@ -471,7 +549,7 @@ export default function Dashboard() {
             </p>
           </section>
 
-          {pairs && (
+          {covMeta && (
             <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
@@ -509,7 +587,7 @@ export default function Dashboard() {
                       : "—"}
                   </dd>
                   <dd className="text-[11px] text-slate-400">
-                    {radiusM >= 1000 ? `${radiusM / 1000} km` : `${radiusM} m`}
+                    {radiusLabel(radiusM, lang)}
                   </dd>
                 </div>
                 <div className="col-span-2 pt-1">
@@ -944,7 +1022,7 @@ export default function Dashboard() {
           <MapView
             depots={depots}
             companies={companies}
-            coverage={coverageGeo}
+            coverage={coverageRings}
             showCoverage={showCoverage}
             radiusM={radiusM}
             showCompanies={showCompanies}

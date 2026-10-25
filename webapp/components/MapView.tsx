@@ -139,6 +139,10 @@ export default function MapView({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
+    // Read-only handle for QA and for anyone debugging in the console. Without
+    // it the only way to check which radius drew was to count amber pixels,
+    // and the depot markers are amber too, so that measured the markers.
+    (window as unknown as { __depotMap?: MlMap }).__depotMap = map;
     // exposed for diagnostics: the basemap can silently fail to paint
     if (typeof window !== "undefined") (window as any).__depotMap = map;
     (window as any).__mapErrors = [];
@@ -386,7 +390,7 @@ export default function MapView({
           type: "fill",
           source: "coverage",
           filter: radiusFilter as never,
-          paint: { "fill-color": "#f59e0b", "fill-opacity": 0.14 },
+          paint: { "fill-color": "#0d9488", "fill-opacity": 0.12 },
         },
         before,
       );
@@ -396,7 +400,7 @@ export default function MapView({
           type: "line",
           source: "coverage",
           filter: radiusFilter as never,
-          paint: { "line-color": "#b45309", "line-width": 0.8, "line-opacity": 0.55 },
+          paint: { "line-color": "#0f766e", "line-width": 0.8, "line-opacity": 0.5 },
         },
         before,
       );

@@ -1,159 +1,195 @@
 {
   "source": "TENtec / AFIR (European Commission)",
-  "totalLocations": 6085,
+  "totalLocations": 349953,
   "byVehicleClass": {
     "HDV": {
       "locations": 6085,
       "onCoreNetwork": 2234,
       "withOperability": 0,
       "topKw": 1200.0
+    },
+    "LDV": {
+      "locations": 343868,
+      "onCoreNetwork": 66327,
+      "withOperability": 0,
+      "topKw": 345.0
     }
   },
   "byCountry": [
     {
-      "country": "DE",
-      "locations": 1999,
-      "hdv": 1999
-    },
-    {
-      "country": "SE",
-      "locations": 630,
-      "hdv": 630
-    },
-    {
-      "country": "NO",
-      "locations": 502,
-      "hdv": 502
-    },
-    {
-      "country": "FR",
-      "locations": 470,
-      "hdv": 470
-    },
-    {
-      "country": "DK",
-      "locations": 358,
-      "hdv": 358
-    },
-    {
-      "country": "BE",
-      "locations": 297,
-      "hdv": 297
-    },
-    {
       "country": "NL",
-      "locations": 283,
+      "locations": 86566,
       "hdv": 283
     },
     {
-      "country": "AT",
-      "locations": 259,
-      "hdv": 259
+      "country": "DE",
+      "locations": 65288,
+      "hdv": 1999
     },
     {
-      "country": "ES",
-      "locations": 187,
-      "hdv": 187
-    },
-    {
-      "country": "FI",
-      "locations": 175,
-      "hdv": 175
+      "country": "FR",
+      "locations": 39397,
+      "hdv": 470
     },
     {
       "country": "IT",
-      "locations": 141,
+      "locations": 28793,
       "hdv": 141
     },
     {
-      "country": "PL",
-      "locations": 132,
-      "hdv": 132
+      "country": "BE",
+      "locations": 28684,
+      "hdv": 297
+    },
+    {
+      "country": "ES",
+      "locations": 14495,
+      "hdv": 187
+    },
+    {
+      "country": "DK",
+      "locations": 12076,
+      "hdv": 358
+    },
+    {
+      "country": "AT",
+      "locations": 11148,
+      "hdv": 259
+    },
+    {
+      "country": "SE",
+      "locations": 8318,
+      "hdv": 630
     },
     {
       "country": "CH",
-      "locations": 96,
+      "locations": 7134,
       "hdv": 96
     },
     {
-      "country": "SK",
-      "locations": 85,
-      "hdv": 85
+      "country": "PL",
+      "locations": 6447,
+      "hdv": 132
     },
     {
       "country": "PT",
-      "locations": 78,
+      "locations": 6274,
       "hdv": 78
     },
     {
-      "country": "LU",
-      "locations": 54,
-      "hdv": 54
-    },
-    {
-      "country": "CZ",
-      "locations": 47,
-      "hdv": 47
-    },
-    {
-      "country": "BG",
-      "locations": 42,
-      "hdv": 42
+      "country": "NO",
+      "locations": 3982,
+      "hdv": 502
     },
     {
       "country": "RO",
-      "locations": 38,
+      "locations": 3886,
       "hdv": 38
     },
     {
-      "country": "IE",
-      "locations": 37,
-      "hdv": 37
-    },
-    {
       "country": "EL",
-      "locations": 29,
+      "locations": 3601,
       "hdv": 29
     },
     {
-      "country": "HU",
-      "locations": 28,
-      "hdv": 28
+      "country": "FI",
+      "locations": 3348,
+      "hdv": 175
     },
     {
-      "country": "HR",
-      "locations": 26,
-      "hdv": 26
-    },
-    {
-      "country": "IS",
-      "locations": 25,
-      "hdv": 25
-    },
-    {
-      "country": "EE",
-      "locations": 19,
-      "hdv": 19
-    },
-    {
-      "country": "LT",
-      "locations": 18,
-      "hdv": 18
+      "country": "CZ",
+      "locations": 2777,
+      "hdv": 47
     },
     {
       "country": "UA",
-      "locations": 14,
+      "locations": 2683,
       "hdv": 14
     },
     {
+      "country": "BG",
+      "locations": 2455,
+      "hdv": 42
+    },
+    {
+      "country": "LT",
+      "locations": 1842,
+      "hdv": 18
+    },
+    {
+      "country": "HU",
+      "locations": 1777,
+      "hdv": 28
+    },
+    {
+      "country": "SK",
+      "locations": 1743,
+      "hdv": 85
+    },
+    {
+      "country": "IE",
+      "locations": 1420,
+      "hdv": 37
+    },
+    {
       "country": "SI",
-      "locations": 12,
+      "locations": 1099,
       "hdv": 12
     },
     {
+      "country": "LU",
+      "locations": 902,
+      "hdv": 54
+    },
+    {
+      "country": "HR",
+      "locations": 875,
+      "hdv": 26
+    },
+    {
       "country": "LV",
-      "locations": 4,
+      "locations": 819,
       "hdv": 4
+    },
+    {
+      "country": "EE",
+      "locations": 815,
+      "hdv": 19
+    },
+    {
+      "country": "IS",
+      "locations": 773,
+      "hdv": 25
+    },
+    {
+      "country": "CY",
+      "locations": 317,
+      "hdv": 0
+    },
+    {
+      "country": "MD",
+      "locations": 158,
+      "hdv": 0
+    },
+    {
+      "country": "MT",
+      "locations": 56,
+      "hdv": 0
+    },
+    {
+      "country": "TR",
+      "locations": 2,
+      "hdv": 0
+    },
+    {
+      "country": "UK",
+      "locations": 2,
+      "hdv": 0
+    },
+    {
+      "country": "VA",
+      "locations": 1,
+      "hdv": 0
     }
   ],
   "operability": {

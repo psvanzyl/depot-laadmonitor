@@ -138,6 +138,10 @@ export default function Dashboard() {
   // TENtec / AFIR: a second charging source. `vehicleClass` scopes which class
   // of AFIR site is drawn and counted; the OSM depot layer is truck-only.
   const [vehicleClass, setVehicleClass] = useState<"all" | "hdv" | "ldv">("hdv");
+  // Which charger sources the coverage counts. Both by default, so the headline
+  // number is the whole picture, and either can be switched off to see the
+  // other's contribution.
+  const [sources, setSources] = useState<number[]>([0, 1]);
   const [afirHdv, setAfirHdv] = useState<{ type: string; features: unknown[] } | null>(null);
   const [afirLdv, setAfirLdv] = useState<{ meta: { countries: string[] }; rows: number[][] } | null>(null);
   const [afirSummary, setAfirSummary] = useState<AfirSummary | null>(null);
@@ -294,8 +298,11 @@ export default function Dashboard() {
       access: access.length === ALL_ACCESS.length ? null : access,
       bands: bands.length === POWER_BANDS.length ? null : bands,
       hgvOnly,
+      // Both sources by default. Empty means nobody selected them, which must
+      // read as zero coverage, not as "all".
+      sources: sources.length === 2 ? null : sources,
     }),
-    [radiusM, countries, access, bands, hgvOnly],
+    [radiusM, countries, access, bands, hgvOnly, sources],
   );
 
   // The live coverage. Recomputed on every filter change: 47k pairs is a
@@ -503,6 +510,34 @@ export default function Dashboard() {
                   </dd>
                   <dd className="text-[11px] text-slate-400">
                     {radiusM >= 1000 ? `${radiusM / 1000} km` : `${radiusM} m`}
+                  </dd>
+                </div>
+                <div className="col-span-2 pt-1">
+                  <dt className="text-slate-500 mb-1">{t("source")}</dt>
+                  <dd className="flex flex-wrap gap-2">
+                    {([0, 1] as const).map((sv) => {
+                      const on = sources.includes(sv);
+                      return (
+                        <button
+                          key={sv}
+                          onClick={() =>
+                            setSources((cur) =>
+                              cur.includes(sv) ? cur.filter((x) => x !== sv) : [...cur, sv],
+                            )
+                          }
+                          aria-pressed={on}
+                          className={`px-2 py-0.5 rounded border text-[11px] font-medium transition ${
+                            on
+                              ? sv === 1
+                                ? "bg-violet-600 border-violet-600 text-white"
+                                : "bg-slate-900 border-slate-900 text-white"
+                              : "bg-white border-slate-300 text-slate-400 hover:border-amber-400"
+                          }`}
+                        >
+                          {sv === 0 ? t("sourceOwn") : t("sourceAfir")}
+                        </button>
+                      );
+                    })}
                   </dd>
                 </div>
                 <div>

@@ -27,8 +27,9 @@ export interface CoveragePairs {
   radii: number[];
   powerBands: { lo: number; hi: number | null }[];
   accessClasses: string[];
-  /** Per charger: [country, accessClass, powerBandIndex, hgvFlag, tier] */
-  chargers: [string, string, number, number, string][];
+  /** Per charger: [country, accessClass, powerBandIndex, hgvFlag, tier, source]
+   *  source 0 = our own scored sites, 1 = the TENtec / AFIR layer. */
+  chargers: [string, string, number, number, string, number][];
   /** Per pair: [chargerIndex, companyIndex, distanceMetres] */
   pairs: [number, number, number][];
   companiesByCountry: Record<string, number>;
@@ -44,6 +45,8 @@ export interface CoverageFilter {
   /** null means every power band; an empty array means none */
   bands: number[] | null;
   hgvOnly: boolean;
+  /** null means both sources; [] means none. 0 = own, 1 = AFIR. */
+  sources?: number[] | null;
 }
 
 export interface CoverageResult {
@@ -87,6 +90,11 @@ export function computeCoverage(
   // The distinct companies covered, and the same count without the filter,
   // so the UI can show how much the filter costs.
   const coveredSet = new Set<number>();
+  const sourceSet =
+    filter.sources === undefined || filter.sources === null
+      ? null
+      : new Set<number>(filter.sources);
+
   const unfilteredSet = new Set<number>();
 
   const { chargers, pairs } = data;
@@ -102,6 +110,7 @@ export function computeCoverage(
     if (accessSet && !accessSet.has(c[1])) continue;
     if (bandSet && !bandSet.has(c[2])) continue;
     if (filter.hgvOnly && c[3] !== 1) continue;
+    if (sourceSet && !sourceSet.has(c[5])) continue;
     matchingChargers += 1;
   }
   for (let i = 0; i < pairs.length; i++) {
@@ -121,6 +130,7 @@ export function computeCoverage(
     if (accessSet && !accessSet.has(accessClass)) continue;
     if (bandSet && !bandSet.has(band)) continue;
     if (filter.hgvOnly && !hgv) continue;
+    if (sourceSet && !sourceSet.has(c[5])) continue;
 
     coveredSet.add(p[1]);
   }

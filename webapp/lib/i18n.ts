@@ -101,6 +101,10 @@ const nl: Dict = {
   radiusHint: "afstand tot de laadlocatie",
   radiusDrawsOne: "alleen deze straal wordt getekend en geteld",
 
+  source: "Bron",
+  sourceOwn: "Eigen sites",
+  sourceAfir: "AFIR (EU)",
+
 };
 
 const en: Dict = {
@@ -191,6 +195,10 @@ const en: Dict = {
   radiusHint: "distance to the charging site",
   radiusDrawsOne: "only this radius is drawn and counted",
 
+  source: "Source",
+  sourceOwn: "Our sites",
+  sourceAfir: "AFIR (EU)",
+
 };
 
 const de: Dict = {
@@ -252,6 +260,10 @@ const de: Dict = {
   radiusHint: "Abstand zum Ladestandort",
   radiusDrawsOne: "nur dieser Radius wird gezeichnet und gezählt",
 
+  source: "Quelle",
+  sourceOwn: "Eigene Standorte",
+  sourceAfir: "AFIR (EU)",
+
 };
 
 const fr: Dict = {
@@ -312,6 +324,10 @@ const fr: Dict = {
 
   radiusHint: "distance au site de recharge",
   radiusDrawsOne: "seul ce rayon est dessiné et compté",
+
+  source: "Source",
+  sourceOwn: "Nos sites",
+  sourceAfir: "AFIR (UE)",
 
 };
 

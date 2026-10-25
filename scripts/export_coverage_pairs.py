@@ -103,30 +103,24 @@ def main() -> None:
     # and the map agree about which country a charger is in.
     from depotmon.ingest.osm_eu import ISO3_TO_ISO2, country_of  # noqa: PLC0415
 
+    # coverage_chargers is premises_scores UNION the AFIR HDV locations, so the
+    # coverage counts the official EU charging sites as well as our own. Before
+    # that view existed, a company 200 m from an AFIR charging pool counted as
+    # uncovered. The view also resolves the country once, which is why the 300 m
+    # signal subquery that used to live here is gone.
     cur.execute(
         """
-        SELECT p.place_key, p.operator, p.tier, p.hgv_capable, p.power_kw,
-               p.lon, p.lat, p.access_class,
-               COALESCE(
-                   (SELECT s.raw_state->>'country' FROM signals s
-                     WHERE s.lon IS NOT NULL AND s.lat IS NOT NULL
-                       AND ST_DWithin(
-                             ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326)::geography,
-                             ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography,
-                             300)
-                       AND s.raw_state->>'country' IS NOT NULL
-                     ORDER BY ST_Distance(
-                             ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326)::geography,
-                             ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography)
-                     LIMIT 1),
-                   NULL
-               ) AS country_raw
-          FROM premises_scores p
-         WHERE p.lon IS NOT NULL AND p.lat IS NOT NULL
+        SELECT place_key, operator, tier, hgv_capable, power_kw,
+               lon, lat, access_class, country_raw, source
+          FROM coverage_chargers
         """
     )
     chargers = cur.fetchall()
     print(f"chargers: {len(chargers)}")
+    _by_src: dict[str, int] = {}
+    for _r in chargers:
+        _by_src[_r.get("source") or "?"] = _by_src.get(_r.get("source") or "?", 0) + 1
+    print("chargers by source:", ", ".join(f"{k}={v}" for k, v in sorted(_by_src.items())))
 
     # Resolve the country for every charger: the signal country first, then
     # the polygon country. The polygon wins over a bounding box, because a
@@ -155,6 +149,7 @@ def main() -> None:
             "band": power_band(float(row["power_kw"]) if row["power_kw"] else None),
             "access": row["access_class"] or "unknown",
             "country": charger_country[row["place_key"]],
+            "source": row.get("source") or "osm",
         }
         for row in chargers
     }
@@ -165,14 +160,10 @@ def main() -> None:
         SELECT p.place_key,
                c.company_id,
                c.country,
-               ST_Distance(
-                   ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography,
-                   c.geom::geography) AS dist
-          FROM premises_scores p
+               ST_Distance(p.geog, c.geom::geography) AS dist
+          FROM coverage_chargers p
           JOIN companies c
-            ON ST_DWithin(
-                 ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography,
-                 c.geom::geography, 5000)
+            ON ST_DWithin(p.geog, c.geom::geography, 5000)
          WHERE p.lon IS NOT NULL AND p.lat IS NOT NULL
            AND c.geom IS NOT NULL
         """
@@ -232,6 +223,9 @@ def main() -> None:
             continue
         pairs_out.append([ci, mi, int(round(float(row["dist"])))])
 
+    # Column 6 is the source, 0 = our own scored sites, 1 = the AFIR layer.
+    # Without it the coverage number silently includes 6,085 official EU sites
+    # and nobody can tell how much of the total comes from where.
     charger_table = [
         [
             charger_info[cid]["country"],
@@ -239,6 +233,7 @@ def main() -> None:
             charger_info[cid]["band"],
             1 if charger_info[cid]["hgv"] else 0,
             charger_info[cid]["tier"],
+            1 if charger_info[cid].get("source") == "tentec" else 0,
         ]
         for cid in charger_ids
     ]
@@ -270,6 +265,8 @@ def main() -> None:
         )
     )
     size = (OUT / "coverage_pairs.json").stat().st_size
+    _n_afir = sum(r[5] for r in charger_table)
+    print(f"chargers from AFIR: {_n_afir}, from own sources: {len(charger_table) - _n_afir}")
     print(f"wrote coverage_pairs.json: {len(charger_table)} chargers, "
           f"{len(company_ids)} companies, {len(pairs_out)} pairs, {size // 1024} KB")
 
@@ -283,7 +280,7 @@ def main() -> None:
         for ci, mi, dist in pairs_out:
             if dist > radius:
                 continue
-            cc, ac, band, hgv, _tier = charger_table[ci]
+            cc, ac, band, hgv, _tier, _src = charger_table[ci]
             if countries is not None and cc not in countries:
                 continue
             if access is not None and ac not in access:

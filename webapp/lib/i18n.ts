@@ -105,6 +105,9 @@ const nl: Dict = {
   sourceOwn: "Eigen sites",
   sourceAfir: "AFIR (EU)",
 
+  filters: "Filters",
+  reset: "Herstel",
+
 };
 
 const en: Dict = {
@@ -199,6 +202,9 @@ const en: Dict = {
   sourceOwn: "Our sites",
   sourceAfir: "AFIR (EU)",
 
+  filters: "Filters",
+  reset: "Reset",
+
 };
 
 const de: Dict = {
@@ -264,6 +270,9 @@ const de: Dict = {
   sourceOwn: "Eigene Standorte",
   sourceAfir: "AFIR (EU)",
 
+  filters: "Filter",
+  reset: "Zurücksetzen",
+
 };
 
 const fr: Dict = {
@@ -328,6 +337,9 @@ const fr: Dict = {
   source: "Source",
   sourceOwn: "Nos sites",
   sourceAfir: "AFIR (UE)",
+
+  filters: "Filtres",
+  reset: "Réinitialiser",
 
 };
 

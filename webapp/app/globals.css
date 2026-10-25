@@ -6,11 +6,35 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+
+  /* --- Carddex-style roles, light (default) ------------------------------- */
+  --dcdx-canvas: #ffffff;
+  --dcdx-surface: #f5f7fb;
+  --dcdx-panel: #ffffff;
+  --dcdx-raised: #edf0f6;
+  --dcdx-field: #ffffff;
+  --dcdx-line: #e4e8f0;
+  --dcdx-line-strong: #ccd4e0;
+  --dcdx-fg: #0b1220;
+  --dcdx-muted: #5a6a84;
+  --dcdx-accent: #b45309;      /* DepotChargeDex's amber, in Carddex's accent slot */
+  --dcdx-accent-soft: rgba(180, 83, 9, 0.14);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-canvas: var(--dcdx-canvas);
+  --color-surface: var(--dcdx-surface);
+  --color-panel: var(--dcdx-panel);
+  --color-raised: var(--dcdx-raised);
+  --color-field: var(--dcdx-field);
+  --color-line: var(--dcdx-line);
+  --color-line-strong: var(--dcdx-line-strong);
+  --color-fg: var(--dcdx-fg);
+  --color-muted: var(--dcdx-muted);
+  --color-accent: var(--dcdx-accent);
+  --color-accent-soft: var(--dcdx-accent-soft);
 }
 
 /* Light is the default. `html.dark` inverts the slate scale and the amber
@@ -18,6 +42,17 @@
    Contrast is checked against these values, not guessed. */
 html.dark {
   color-scheme: dark;
+  --dcdx-canvas: #070a10;
+  --dcdx-surface: #0b1018;
+  --dcdx-panel: #101725;
+  --dcdx-raised: #151d2c;
+  --dcdx-field: #0b1018;
+  --dcdx-line: #1d2739;
+  --dcdx-line-strong: #24304a;
+  --dcdx-fg: #e7eefb;
+  --dcdx-muted: #8fa0bb;
+  --dcdx-accent: #f7bc63;
+  --dcdx-accent-soft: rgba(247, 188, 99, 0.16);
   --background: #070a10;
   --foreground: #e7eefb;
 

@@ -446,15 +446,26 @@ export default function Dashboard() {
   const tierText = (x: Tier) =>
     ({ A: t("tierA"), B: t("tierB"), C: t("tierC") })[x];
 
+  /** Back to the unfiltered view: every country, every band, both sources. */
+  const resetFilters = () => {
+    setRadiusM(1000);
+    setCountries(null);
+    setAccess(ALL_ACCESS);
+    setBands(POWER_BANDS.map((_, i) => i));
+    setHgvOnly(false);
+    setSources([0, 1]);
+    setTiers(ALL_TIERS);
+    setShowAllCountries(false);
+  };
+
   const countryName = (cc: string) => COUNTRY_NAME[cc] ?? cc;
   const shownCountries = showAllCountries ? countryCounts : countryCounts.slice(0, 12);
 
   return (
     <div className="min-h-screen lg:h-screen flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-line/80 bg-canvas/85 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-3 px-3 sm:px-5">
           <DexLogo />
-          <p className="text-xs text-slate-500 hidden md:block">{t("tagline")}</p>
           <div className="ml-auto flex items-center gap-3">
             {summary && (
               <span className="text-[11px] text-slate-400 hidden sm:block">
@@ -481,14 +492,35 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <section className="border-b border-line/70 bg-gradient-to-b from-surface to-canvas">
+        <div className="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-5 sm:py-4">
+          <h1 className="text-[22px] font-semibold tracking-tight sm:text-[26px]">
+            Depot<span className="text-accent">ChargeDex</span>
+          </h1>
+          <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">{t("tagline")}</p>
+        </div>
+      </section>
+
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        <aside className="order-last lg:order-none lg:w-[400px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
+        <aside className="order-last lg:order-none lg:w-[400px] lg:shrink-0 lg:min-h-0 flex flex-col overflow-hidden border-line bg-panel max-lg:border-t lg:border-l">
+          <div className="flex items-center gap-2 border-b border-line/70 px-3 py-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+              {t("filters")}
+            </span>
+            <button
+              onClick={resetFilters}
+              className="ml-auto text-[11px] text-muted transition hover:text-accent"
+            >
+              {t("reset")}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {/* The radius is pinned to the top of the sidebar. It sat 2,172 px
               down a 3,533 px column before, below the fleet table, so the one
               setting that changes every number on the page was invisible. */}
-          <section className="sticky top-0 z-20 -mx-1 px-1 pb-1 bg-slate-50 space-y-2 rounded-xl border border-amber-300 bg-white p-3 shadow-sm">
+          <section className="sticky top-0 z-20 space-y-2 border-b border-line/70 bg-panel px-3 py-3">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("radius")}
               </h2>
               <div className="flex items-center gap-2">
@@ -539,7 +571,7 @@ export default function Dashboard() {
             <p className="text-[11px] leading-snug text-slate-500">{t("radiusDrawsOne")}</p>
           </section>
 
-          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-1">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-1">
             <div className="text-4xl font-bold text-amber-700 tabular-nums">
               {depots ? nf.format(visible.length) : "…"}
             </div>
@@ -552,16 +584,16 @@ export default function Dashboard() {
           </section>
 
           {covMeta && (
-            <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
+            <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                   {t("coverageTitle")}
                 </h2>
                 <button
                   onClick={() => setShowCoverage((v) => !v)}
                   title={t("coverageHint")}
                   aria-pressed={showCoverage}
-                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                  className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                     showCoverage
                       ? "bg-amber-600 border-amber-600 text-white"
                       : "bg-white border-amber-300 text-amber-700 hover:border-amber-500"
@@ -646,8 +678,8 @@ export default function Dashboard() {
               fleet needs, based on the density that country's existing
               chargers already reach. */}
           {countryRows.length > 0 && (
-            <section className="bg-white rounded-xl border border-slate-200 p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            <section className="border-b border-line/70 px-3 py-3 last:border-b-0">
+              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("fleetByCountry")}
               </h2>
               <div className="overflow-x-auto -mx-1 px-1">
@@ -687,8 +719,8 @@ export default function Dashboard() {
             </section>
           )}
 
-          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("certainty")}
             </h2>
             <div className="flex flex-wrap gap-2">
@@ -699,7 +731,7 @@ export default function Dashboard() {
                     key={x}
                     onClick={() => toggleTier(x)}
                     title={t(`tierHint${x}`)}
-                    className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                       on
                         ? "text-white border-transparent"
                         : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -714,7 +746,7 @@ export default function Dashboard() {
                 onClick={() => setHgvOnly((v) => !v)}
                 title={t("hgvHint")}
                 aria-pressed={hgvOnly}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                   hgvOnly
                     ? "bg-slate-900 border-slate-900 text-white"
                     : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -726,7 +758,7 @@ export default function Dashboard() {
                 onClick={() => setShowCompanies((v) => !v)}
                 title={t("companiesHint")}
                 aria-pressed={showCompanies}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                   showCompanies
                     ? "bg-teal-700 border-teal-700 text-white"
                     : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -749,8 +781,8 @@ export default function Dashboard() {
           </section>
 
           {/* Access class: private / semi-public / public. */}
-          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("access")}
             </h2>
             <div className="flex flex-wrap gap-2">
@@ -762,7 +794,7 @@ export default function Dashboard() {
                     onClick={() => toggleAccess(a)}
                     title={t(`accessHint${a === "semi_public" ? "Semi" : a === "public" ? "Public" : a === "private" ? "Private" : "Unknown"}`)}
                     aria-pressed={on}
-                    className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                       on
                         ? "bg-slate-900 border-slate-900 text-white"
                         : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -776,8 +808,8 @@ export default function Dashboard() {
           </section>
 
           {/* Power in kW. */}
-          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("power")}
             </h2>
             <div className="flex flex-wrap gap-2">
@@ -792,7 +824,7 @@ export default function Dashboard() {
                       )
                     }
                     aria-pressed={on}
-                    className={`px-2.5 py-1 rounded-md border text-xs font-medium tabular-nums transition ${
+                    className={`px-2 py-0.5 rounded-md border text-[11px] font-medium tabular-nums transition ${
                       on
                         ? "bg-slate-900 border-slate-900 text-white"
                         : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -806,9 +838,9 @@ export default function Dashboard() {
           </section>
 
           {/* TENtec / AFIR — the EU official source, beside our own findings. */}
-          <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-3">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("afirTitle")}
               </h2>
               {afirSummary && (
@@ -829,7 +861,7 @@ export default function Dashboard() {
                     key={v}
                     onClick={() => setVehicleClass(v)}
                     aria-pressed={on}
-                    className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                    className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                       on
                         ? "bg-amber-600 border-amber-600 text-white"
                         : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -889,15 +921,15 @@ export default function Dashboard() {
           </section>
 
           {/* Country filter. */}
-          <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("country")}
             </h2>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setCountries(null)}
                 aria-pressed={countries === null}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                   countries === null
                     ? "bg-slate-900 border-slate-900 text-white"
                     : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
@@ -910,7 +942,7 @@ export default function Dashboard() {
                   key={cc}
                   onClick={() => toggleCountry(cc)}
                   aria-pressed={countryOn(cc)}
-                  className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                  className={`px-2 py-0.5 rounded-md border text-[11px] font-medium transition ${
                     countryOn(cc)
                       ? "bg-white border-amber-400 text-slate-700"
                       : "bg-slate-100 border-slate-200 text-slate-400 line-through"
@@ -930,8 +962,8 @@ export default function Dashboard() {
             )}
           </section>
 
-          <section className="bg-white rounded-xl border border-slate-200 p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0">
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("sites")} ({nf.format(visible.length)})
             </h2>
             <ul className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto -mx-1">
@@ -981,8 +1013,8 @@ export default function Dashboard() {
           </section>
 
           {regions.length > 0 && (
-            <section className="bg-white rounded-xl border border-slate-200 p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            <section className="border-b border-line/70 px-3 py-3 last:border-b-0">
+              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("perRegion")}
               </h2>
               <table className="w-full text-xs">
@@ -1012,6 +1044,7 @@ export default function Dashboard() {
               ? ` ${summary.sites.withoutCoords} ${t("noCoords")}`
               : ""}
           </p>
+          </div>
         </aside>
 
         {/* The map comes FIRST on mobile (order-first), because the sidebar

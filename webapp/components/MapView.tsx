@@ -199,8 +199,6 @@ export default function MapView({
     else map.once("load", ensure);
   }, [companies]);
 
-  // Source + layer, added once the style is ready.
-  useEffect(() => {
   // TENtec / AFIR layers. Drawn under the depot markers: the depot layer is the
   // product's own finding, the AFIR layer is the official context around it.
   useEffect(() => {
@@ -264,6 +262,8 @@ export default function MapView({
     else map.once("load", ensure);
   }, [afirHdv, afirLdv, vehicleClass]);
 
+  // Source + layer, added once the style is ready.
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !depots) return;
     const ensure = () => {

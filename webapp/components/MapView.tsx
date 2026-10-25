@@ -222,10 +222,14 @@ export default function MapView({
           source: "afir-hdv",
           paint: {
             "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 1.8, 7, 3.2, 11, 6],
-            "circle-color": "#f59e0b",
-            "circle-opacity": 0.55,
+            // Violet, not amber: the coverage rings are amber (#f59e0b), and
+            // drawing the AFIR sites in the same hue made the two layers
+            // indistinguishable on the map and in pixel checks. One colour, one
+            // meaning.
+            "circle-color": "#7c3aed",
+            "circle-opacity": 0.6,
             "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 3, 0, 7, 0.4, 11, 0.9],
-            "circle-stroke-color": "#b45309",
+            "circle-stroke-color": "#5b21b6",
             "circle-stroke-opacity": 0.7,
           },
         });

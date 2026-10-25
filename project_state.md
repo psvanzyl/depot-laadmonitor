@@ -1196,3 +1196,33 @@ error.
 Country names in the country filter are not translated: with `?lang=en` the
 chips still read "Duitsland", "Nederland". Section headings and the rest of the
 UI do switch language.
+
+## 9. Nordic and Balkan companies, and the coverage they moved (2026-10-25)
+
+The Europe company ingest finished for the last 18 countries: NO SE FI IS DK RO GR
+EE LT RS ME MK LU AL CY MT LI AD. Stored 47,241 rows, no failures.
+
+    companies   230,904 -> 245,306
+    countries        27 -> 45 buckets
+
+The coverage binaries were built against the old set, so every figure on the site
+understated the truth: the new companies sit near chargers and had no pairs
+pointing at them. Re-exported `export_coverage_matrix.py` in 9 s.
+
+    radius    pairs before -> after     companies covered
+    1 km      25,036 -> 25,725          17,516 / 245,306   7.140%
+    2,5 km    95,144 -> 97,499          49,463 / 245,306  20.164%
+    5 km     258,946 -> 264,793         85,121 / 245,306  34.700%
+    10 km    730,875 -> 744,994        130,443 / 245,306  53.176%
+    20 km  2,069,191 -> 2,099,163      175,814 / 245,306  71.671%
+
+Company indices still fit the 18-bit field: 245,306 of 262,143. The charger table
+is unchanged at 9,266 so charger indices stayed stable and the binary header
+(<4sBHIII, 24 bytes) did not change format.
+
+Verified on the live site, all five stops equal the decoded binaries exactly:
+17.516 / 49.463 / 85.121 / 130.443 / 175.814 of 245.306, percentages 7.1 / 20.2 /
+34.7 / 53.2 / 71.7. The fleet table now lists Zweden and Noorwegen.
+
+Also in this pass: the side panel went from 400 px pinned to the window edge to
+272 px inside the family shell, so it lines up with the logo and the intro band.

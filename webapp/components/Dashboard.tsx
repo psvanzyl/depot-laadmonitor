@@ -518,7 +518,7 @@ export default function Dashboard() {
           {/* The radius is pinned to the top of the sidebar. It sat 2,172 px
               down a 3,533 px column before, below the fleet table, so the one
               setting that changes every number on the page was invisible. */}
-          <section className="sticky top-0 z-20 space-y-2 border-b border-line/70 bg-panel px-3 py-3">
+          <section className="sticky top-0 z-20 space-y-2 border-b border-line/70 bg-panel px-3 py-3 order-3">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("radius")}
@@ -571,7 +571,7 @@ export default function Dashboard() {
             <p className="text-[11px] leading-snug text-slate-500">{t("radiusDrawsOne")}</p>
           </section>
 
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-1">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-1 order-2">
             <div className="text-4xl font-bold text-amber-700 tabular-nums">
               {depots ? nf.format(visible.length) : "…"}
             </div>
@@ -584,7 +584,7 @@ export default function Dashboard() {
           </section>
 
           {covMeta && (
-            <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-3">
+            <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-3 order-4">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                   {t("coverageTitle")}
@@ -678,7 +678,7 @@ export default function Dashboard() {
               fleet needs, based on the density that country's existing
               chargers already reach. */}
           {countryRows.length > 0 && (
-            <section className="border-b border-line/70 px-3 py-3 last:border-b-0">
+            <section className="border-b border-line/70 px-3 py-3 last:border-b-0 order-9">
               <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("fleetByCountry")}
               </h2>
@@ -719,7 +719,7 @@ export default function Dashboard() {
             </section>
           )}
 
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2 order-5">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("certainty")}
             </h2>
@@ -781,7 +781,7 @@ export default function Dashboard() {
           </section>
 
           {/* Access class: private / semi-public / public. */}
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2 order-6">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("access")}
             </h2>
@@ -808,7 +808,7 @@ export default function Dashboard() {
           </section>
 
           {/* Power in kW. */}
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2 order-7">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("power")}
             </h2>
@@ -838,7 +838,7 @@ export default function Dashboard() {
           </section>
 
           {/* TENtec / AFIR — the EU official source, beside our own findings. */}
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-3">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-3 order-8">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("afirTitle")}
@@ -921,7 +921,7 @@ export default function Dashboard() {
           </section>
 
           {/* Country filter. */}
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 space-y-2 order-1">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("country")}
             </h2>
@@ -962,7 +962,7 @@ export default function Dashboard() {
             )}
           </section>
 
-          <section className="border-b border-line/70 px-3 py-3 last:border-b-0">
+          <section className="border-b border-line/70 px-3 py-3 last:border-b-0 order-10">
             <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("sites")} ({nf.format(visible.length)})
             </h2>
@@ -1013,7 +1013,7 @@ export default function Dashboard() {
           </section>
 
           {regions.length > 0 && (
-            <section className="border-b border-line/70 px-3 py-3 last:border-b-0">
+            <section className="border-b border-line/70 px-3 py-3 last:border-b-0 order-11">
               <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
                 {t("perRegion")}
               </h2>
@@ -1033,12 +1033,12 @@ export default function Dashboard() {
           )}
 
           {error && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 order-12">
               {t("loadError")}: {error}
             </p>
           )}
 
-          <p className="text-[11px] leading-relaxed text-slate-400 px-1">
+          <p className="text-[11px] leading-relaxed text-slate-400 px-1 order-13">
             {t("footer")}
             {summary?.sites.withoutCoords
               ? ` ${summary.sites.withoutCoords} ${t("noCoords")}`

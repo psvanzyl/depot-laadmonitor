@@ -121,6 +121,12 @@ export default function MapView({
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const tiersRef = useRef<Tier[]>(tiers);
   tiersRef.current = tiers;
+  // The coverage layers are created inside map.once("load") when the style is
+  // not ready yet, so the radius must be readable at creation time and not only
+  // in the effect that runs later. Without this the creation happened with no
+  // filter and all four radii drew.
+  const radiusRef = useRef(radiusM);
+  radiusRef.current = radiusM;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -369,11 +375,13 @@ export default function MapView({
       if (map.getSource("coverage")) return;
       map.addSource("coverage", { type: "geojson", data: coverage as never });
       const before = map.getLayer("depots") ? "depots" : undefined;
+      const radiusFilter = ["==", ["get", "radiusM"], radiusRef.current];
       map.addLayer(
         {
           id: "coverage",
           type: "fill",
           source: "coverage",
+          filter: radiusFilter as never,
           paint: { "fill-color": "#f59e0b", "fill-opacity": 0.14 },
         },
         before,
@@ -383,6 +391,7 @@ export default function MapView({
           id: "coverage-line",
           type: "line",
           source: "coverage",
+          filter: radiusFilter as never,
           paint: { "line-color": "#b45309", "line-width": 0.8, "line-opacity": 0.55 },
         },
         before,
@@ -402,12 +411,19 @@ export default function MapView({
     }
   }, [showCoverage, coverage]);
 
-  // Only the rings of the selected radius are drawn.
+  // Only the rings of the selected radius are drawn. If the layer is not there
+  // yet, set it as soon as the style settles instead of returning and never
+  // applying it, which is what left all four radii on screen.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.getLayer("coverage")) return;
-    map.setFilter("coverage", ["==", ["get", "radiusM"], radiusM]);
-    map.setFilter("coverage-line", ["==", ["get", "radiusM"], radiusM]);
+    if (!map) return;
+    const apply = () => {
+      const f = ["==", ["get", "radiusM"], radiusM] as never;
+      if (map.getLayer("coverage")) map.setFilter("coverage", f);
+      if (map.getLayer("coverage-line")) map.setFilter("coverage-line", f);
+    };
+    if (map.getLayer("coverage")) apply();
+    else map.once("idle", apply);
   }, [radiusM, coverage]);
 
   // Tier, HGV, power and access filters are client-side, so the chips work without a rebuild.

@@ -98,6 +98,9 @@ const nl: Dict = {
   operabilityNote: "TENtec publiceert geen vrij/bezet-status. Live bezetting vereist een OCPI-feed per operator.",
   afirLoading: "Auto's laden…",
 
+  radiusHint: "afstand tot de laadlocatie",
+  radiusDrawsOne: "alleen deze straal wordt getekend en geteld",
+
 };
 
 const en: Dict = {
@@ -185,6 +188,9 @@ const en: Dict = {
   operabilityNote: "TENtec publishes no free/busy status. Live occupancy needs an OCPI feed per operator.",
   afirLoading: "Loading cars…",
 
+  radiusHint: "distance to the charging site",
+  radiusDrawsOne: "only this radius is drawn and counted",
+
 };
 
 const de: Dict = {
@@ -243,6 +249,9 @@ const de: Dict = {
   operabilityNote: "TENtec veröffentlicht keinen Frei/Belegt-Status. Live-Belegung braucht einen OCPI-Feed je Betreiber.",
   afirLoading: "Pkw werden geladen…",
 
+  radiusHint: "Abstand zum Ladestandort",
+  radiusDrawsOne: "nur dieser Radius wird gezeichnet und gezählt",
+
 };
 
 const fr: Dict = {
@@ -300,6 +309,9 @@ const fr: Dict = {
   notAvailable: "Non disponible",
   operabilityNote: "TENtec ne publie pas d'état libre/occupé. L'occupation en direct exige un flux OCPI par opérateur.",
   afirLoading: "Chargement des voitures…",
+
+  radiusHint: "distance au site de recharge",
+  radiusDrawsOne: "seul ce rayon est dessiné et compté",
 
 };
 

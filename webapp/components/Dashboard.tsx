@@ -126,7 +126,7 @@ export default function Dashboard() {
   const [depots, setDepots] = useState<Depots | null>(null);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
   const [coverageGeo, setCoverageGeo] = useState<{ type: string; features: unknown[] } | null>(null);
-  const [showCoverage, setShowCoverage] = useState(false);
+  const [showCoverage, setShowCoverage] = useState(true);
   const [radiusM, setRadiusM] = useState(500);
   const [tiers, setTiers] = useState<Tier[]>(ALL_TIERS);
   const [access, setAccess] = useState<AccessClass[]>(ALL_ACCESS);
@@ -428,29 +428,6 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Radius picker, the way the pakketpuntenviewer does it. */}
-              <div className="space-y-1">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                  {t("radius")}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {RADII.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRadiusM(r)}
-                      aria-pressed={radiusM === r}
-                      className={`px-2.5 py-1 rounded-md border text-xs font-medium tabular-nums transition ${
-                        radiusM === r
-                          ? "bg-amber-600 border-amber-600 text-white"
-                          : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
-                      }`}
-                    >
-                      {r >= 1000 ? `${r / 1000} km` : `${r} m`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <dl className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <dt className="text-slate-500">{t("companiesInRange")}</dt>
@@ -738,6 +715,50 @@ export default function Dashboard() {
             {vehicleClass !== "hdv" && !afirLdv && (
               <p className="text-[11px] text-slate-400">{t("afirLoading")}</p>
             )}
+          </section>
+
+          {/* Radius: the filter the coverage is computed against, and the only
+              radius drawn on the map. */}
+          <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                {t("radius")}
+              </h2>
+              <span className="text-[11px] text-slate-400">{t("radiusHint")}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {RADII.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRadiusM(r)}
+                  aria-pressed={radiusM === r}
+                  title={r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                  className={`px-2.5 py-1 rounded-md border text-xs font-medium tabular-nums transition ${
+                    radiusM === r
+                      ? "bg-amber-600 border-amber-600 text-white"
+                      : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
+                  }`}
+                >
+                  {r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowCoverage((v) => !v)}
+                aria-pressed={showCoverage}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
+                  showCoverage
+                    ? "bg-white border-amber-500 text-amber-700"
+                    : "bg-white border-slate-300 text-slate-400 hover:border-amber-400"
+                }`}
+                title={t("coverageHint")}
+              >
+                {showCoverage ? t("on") : t("off")}
+              </button>
+            </div>
+            <p className="text-[11px] leading-snug text-slate-500">
+              {nf.format(radiusM >= 1000 ? radiusM / 1000 : radiusM)}
+              {radiusM >= 1000 ? " km" : " m"} · {t("radiusDrawsOne")}
+            </p>
           </section>
 
           {/* Country filter. */}

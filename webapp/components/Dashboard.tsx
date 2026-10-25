@@ -464,7 +464,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen lg:h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b border-line/80 bg-canvas/85 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-3 px-3 sm:px-5">
+        <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-2 px-3 sm:gap-3 sm:px-5">
           <DexLogo />
           <div className="ml-auto flex items-center gap-3">
             {summary && (

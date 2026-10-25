@@ -1088,3 +1088,111 @@ sites x 4 radii is about 36,000 polygons, roughly 32 MB, and the file is fetched
 eagerly on every page load. The 7 MB it already ships is too much. The fix is
 one file per radius, fetched only for the selected radius and only when rings
 are on.
+
+## 2026-10-25 (later) — radius stops 1 / 2,5 / 5 / 10 / 20 km
+
+### The 5 km ceiling was structural, not cosmetic
+
+The radius filter could not reach 20 km because the data could not:
+`coverage_pairs.json` held only pairs within 5 km, and `coverage.geojson` held
+rings only at 500/1000/2000/5000 m. Two of the five requested stops had nothing
+to count and three had nothing to draw.
+
+Measured pair counts on this database:
+
+| radius | pairs |
+|--------|-------|
+| 1 km | 25,036 |
+| 2.5 km | 95,144 |
+| 5 km | 258,946 |
+| 10 km | 730,875 |
+| 20 km | 2,069,191 |
+
+As JSON with a distance per pair that is about 37 MB. Asking Postgres per slider
+move costs about 1 s: a 20 km spatial join over 230,904 companies is real work,
+and no index removes it. Neither option is a filter, so the layout changed.
+
+### One binary file per radius
+
+    (chargerIndex << 18) | companyIndex
+
+18 bits holds 262,143 companies (there are 230,904); 14 bits holds 16,383
+chargers (there are 9,266). The radius is implicit in **which file was loaded**,
+so no distance is stored and a 1 km file cannot contain a 2 km pair.
+
+| radius | file | size |
+|--------|------|------|
+| 1 km | coverage_1000.bin | 0.10 MB |
+| 2.5 km | coverage_2500.bin | 0.38 MB |
+| 5 km | coverage_5000.bin | 1.04 MB |
+| 10 km | coverage_10000.bin | 2.92 MB |
+| 20 km | coverage_20000.bin | 8.28 MB |
+
+The browser fetches only the selected radius and caches it, so 1 km costs
+100 KB. `coverage_meta.json` (398 KB) carries the charger attributes, the
+coordinates and the per-country denominators and is shared by all radii.
+
+**The header is 24 bytes on purpose.** A `Uint32Array` cannot start at a byte
+offset that is not a multiple of four, and copying an 8 MB payload to satisfy
+the alignment is a waste when the header can be padded instead.
+
+### The rings are drawn in the browser now
+
+The exported ring file drew all 3,181 own sites whatever the filter said, and
+could only ever serve four fixed radii. The browser has the coordinates, the
+radius and the filter, so it builds the circles itself: 16 points per circle,
+regenerated on every radius and filter change, and `MapView` calls `setData`.
+
+That fixes three things at once: every stop draws, the rings describe exactly
+the chargers the number counts, and the 7 MB `coverage.geojson` download is
+gone. `coverage_pairs.json` is gone too.
+
+`MapView`'s coverage effect used to `return` when the source already existed.
+Harmless for a static file, wrong for data that changes on every slider move: it
+kept the first frame forever.
+
+### Verified against the database, not against itself
+
+Every stop, every charger, both sources, no attribute filter:
+
+| radius | live panel | SQL | % |
+|--------|-----------|-----|---|
+| 1 km | 17.013 | 17,013 | 7.4% |
+| 2.5 km | 48.201 | 48,201 | 20.9% |
+| 5 km | 83.051 | 83,051 | 36.0% |
+| 10 km | 127.069 | 127,069 | 55.0% |
+| 20 km | 171.099 | 171,099 | 74.1% |
+
+Denominator 230,904. Germany isolated at 1 km: live 7,875 of 57,010 = 13.8%,
+SQL 7,875 / 57,010. Exact.
+
+Ring check reads `queryRenderedFeatures` and asserts the set of distinct
+`radiusM` values drawn: `[1000]`, `[2500]`, `[5000]`, `[10000]`, `[20000]`.
+One radius, never several. 9,266 ring features in the source at every stop.
+
+### Bug found on the way: the power bands did not line up
+
+The exporter used three power bands `(50-150, 150-350, 350+)` while the UI draws
+four chips `<50, 50-150, 150-350, 350+`. Band 0 therefore meant "50-150 kW" in
+the data and "<50 kW" on screen, so clicking "<50 kW" counted 50-150 kW
+chargers. The data now uses the four bands the UI already drew.
+
+### A "WebGL is not available" message is not evidence about WebGL
+
+After the deploy the map vanished and `MapBoundary` said WebGL was unavailable.
+The real cause was `coverage_meta.json` still having six-field charger rows: the
+exporter was patched to publish `lon`/`lat` and never re-run, `Number.isFinite`
+on `undefined` is false, every charger was skipped and zero rings were built.
+
+Separately, the Hermes cloud browser session genuinely lost its WebGL context
+(`GL_VENDOR = Disabled`), which is a second, unrelated reason the map did not
+paint there. Both times the message pointed at the GPU and neither time was it
+the GPU. Use `scripts/qa_radius_stops.py` (Xvfb + SwiftShader on CT141) for
+anything that needs a real map, and check the data before believing a graphics
+error.
+
+### Known gap, not fixed here
+
+Country names in the country filter are not translated: with `?lang=en` the
+chips still read "Duitsland", "Nederland". Section headings and the rest of the
+UI do switch language.

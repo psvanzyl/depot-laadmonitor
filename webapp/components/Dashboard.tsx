@@ -501,8 +501,8 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        <aside className="order-last lg:order-none lg:w-[400px] lg:shrink-0 lg:min-h-0 flex flex-col overflow-hidden border-line bg-panel max-lg:border-t lg:border-l">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-3 px-3 pb-3 sm:px-5 sm:pb-4 lg:flex-row lg:gap-4 lg:overflow-hidden">
+        <aside className="order-last flex flex-col overflow-hidden rounded-xl border border-line bg-panel lg:order-none lg:min-h-0 lg:w-[272px] lg:shrink-0">
           <div className="flex items-center gap-2 border-b border-line/70 px-3 py-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t("filters")}
@@ -686,7 +686,7 @@ export default function Dashboard() {
                 {/* min-w forces a horizontal scrollbar rather than squeezing the
                     columns: at 332 px of card width the four columns do not
                     fit, and squeezed numbers get clipped at the card edge. */}
-                <table className="w-full text-xs min-w-[300px] table-fixed">
+                <table className="w-full min-w-[232px] table-fixed text-xs">
                   <thead>
                     <tr className="text-slate-400 border-b border-slate-100">
                       <th className="text-left font-medium py-1 w-[38%]">{t("country")}</th>
@@ -1052,7 +1052,7 @@ export default function Dashboard() {
             the map below it, the map was below the fold on every phone: the
             filters were reachable by scrolling, but the map itself never was.
             On desktop the sidebar keeps its place on the left. */}
-        <main className="relative order-first h-[55vh] lg:order-none lg:h-auto lg:flex-1 min-h-[380px]">
+        <main className="relative order-first h-[55vh] min-h-[380px] overflow-hidden rounded-xl border border-line lg:order-none lg:h-auto lg:flex-1">
           <MapBoundary message={t("mapUnavailable")}>
           <MapView
             depots={depots}

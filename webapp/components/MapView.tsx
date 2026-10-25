@@ -181,9 +181,9 @@ export default function MapView({
         type: "circle",
         source: "companies",
         paint: {
-          "circle-radius": 2.6,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 1.2, 7, 2.0, 11, 3.2],
           "circle-color": ["match", ["get", "kind"], "carrier", "#0f766e", "#64748b"],
-          "circle-opacity": 0.45,
+          "circle-opacity": ["interpolate", ["linear"], ["zoom"], 3, 0.22, 8, 0.35, 11, 0.5],
         },
       });
       map.on("click", "companies", (e) => {

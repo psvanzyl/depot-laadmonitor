@@ -17,9 +17,13 @@ def main() -> int:
         with store.conn.cursor() as cur:
             cur.execute(
                 """SELECT name, kind, address, postcode, city, source, source_url,
-                          ST_X(geom) AS lon, ST_Y(geom) AS lat
+                          country, ST_X(geom) AS lon, ST_Y(geom) AS lat
                      FROM companies
                     WHERE geom IS NOT NULL
+                      -- Some OSM ways carry a struck-through or default 0,0-ish
+                      -- location: 14 points landed in Mexico and Africa.
+                      AND ST_X(geom) BETWEEN -25 AND 45
+                      AND ST_Y(geom) BETWEEN 34 AND 72
                     ORDER BY name"""
             )
             rows = cur.fetchall()
@@ -36,6 +40,7 @@ def main() -> int:
                     "city": r["city"],
                     "source": r["source"],
                     "sourceUrl": r["source_url"],
+                    "country": r["country"],
                 },
             }
         )

@@ -228,3 +228,161 @@ export function matchingChargerIndexes(
   for (let i = 0; i < ok.length; i++) if (ok[i]) out.push(i);
   return out;
 }
+
+/* ------------------------------------------------------------------ *
+ * Long radii: charger-class masks instead of pairs.
+ *
+ * 50 km is 9.0 M pairs (34.5 MB) and 100 km is 29.7 M (113.4 MB), so the
+ * pair file cannot carry the long end. But the question there is not which
+ * charger reaches which company — it is whether ANY charger of this class
+ * reaches it. So the index inverts: one record per company holding a bitmask
+ * of the charger classes in range.
+ *
+ * A class is the full filter tuple (tier, access, band, source, hgv), so a
+ * filter is also a bitmask and "covered" is one AND per company. The answer is
+ * exact, for every filter, from one file per radius.
+ * ------------------------------------------------------------------ */
+
+export interface MaskData {
+  radius: number;
+  nClasses: number;
+  countries: string[];
+  /** nClasses records of 5 bytes: tier letter, access index, band, source, hgv */
+  classes: Uint8Array;
+  /** nRecords records of 4 words: countryIdx, mask0, mask1, mask2 */
+  records: Uint32Array;
+}
+
+/** Header is 21 bytes; records start on a 4-byte boundary after the padding. */
+export function parseMask(buf: ArrayBuffer): MaskData {
+  const dv = new DataView(buf);
+  const magic = String.fromCharCode(
+    dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3),
+  );
+  if (magic !== "DCDM") throw new Error("coverage mask: bad magic");
+  const radius = dv.getUint32(5, true);
+  const nClasses = dv.getUint16(9, true);
+  const nRecords = dv.getUint32(11, true);
+  const nCountries = dv.getUint16(15, true);
+
+  let off = 21;
+  const classes = new Uint8Array(buf, off, nClasses * 5);
+  off += nClasses * 5;
+  const countries: string[] = [];
+  for (let i = 0; i < nCountries; i++) {
+    countries.push(
+      String.fromCharCode(dv.getUint8(off)) + String.fromCharCode(dv.getUint8(off + 1)),
+    );
+    off += 2;
+  }
+  off += (4 - (off % 4)) % 4;
+  const records = new Uint32Array(buf, off, nRecords * 4);
+  return { radius, nClasses, countries, classes, records };
+}
+
+const ACCESS_ORDER = ["public", "semi_public", "private", "unknown"];
+
+/** Which class bits the current filter selects. */
+function selectedBits(mask: MaskData, filter: CoverageFilter): Uint32Array {
+  const bits = new Uint32Array(3);
+  const accessSet = filter.access ? new Set(filter.access) : null;
+  const bandSet = filter.bands ? new Set(filter.bands) : null;
+  const sourceSet =
+    filter.sources === undefined || filter.sources === null
+      ? null
+      : new Set<number>(filter.sources);
+
+  for (let i = 0; i < mask.nClasses; i++) {
+    const o = i * 5;
+    const access = ACCESS_ORDER[mask.classes[o + 1]];
+    const band = mask.classes[o + 2];
+    const source = mask.classes[o + 3];
+    const hgv = mask.classes[o + 4];
+    if (accessSet && !accessSet.has(access)) continue;
+    if (bandSet && !bandSet.has(band)) continue;
+    if (filter.hgvOnly && hgv !== 1) continue;
+    if (sourceSet && !sourceSet.has(source)) continue;
+    const w = i < 32 ? 0 : i < 62 ? 1 : 2;
+    const shift = i < 32 ? i : i < 62 ? i - 32 : i - 62;
+    bits[w] |= 1 << shift;
+  }
+  return bits;
+}
+
+function hits(rec: Uint32Array, i: number, sel: Uint32Array): boolean {
+  const o = i * 4;
+  return (
+    (rec[o + 1] & sel[0]) !== 0 ||
+    (rec[o + 2] & sel[1]) !== 0 ||
+    (rec[o + 3] & sel[2]) !== 0
+  );
+}
+
+export function computeCoverageMasks(
+  meta: CoverageMeta,
+  mask: MaskData,
+  filter: CoverageFilter,
+): CoverageResult {
+  const sel = selectedBits(mask, filter);
+  const countrySet = filter.countries ? new Set(filter.countries) : null;
+  const { chargers } = matchingChargers(meta, filter);
+
+  let covered = 0;
+  let unfiltered = 0;
+  for (let i = 0; i < mask.records.length / 4; i++) {
+    const o = i * 4;
+    const cc = mask.countries[mask.records[o]];
+    if (countrySet && !countrySet.has(cc)) continue;
+    const anyBit =
+      mask.records[o + 1] !== 0 || mask.records[o + 2] !== 0 || mask.records[o + 3] !== 0;
+    if (anyBit) unfiltered += 1;
+    if (hits(mask.records, i, sel)) covered += 1;
+  }
+
+  let denominator = 0;
+  if (countrySet) {
+    for (const cc of countrySet) denominator += meta.companiesByCountry[cc] ?? 0;
+  } else {
+    denominator = meta.companiesTotal;
+  }
+
+  return {
+    covered,
+    denominator,
+    pct: denominator > 0 ? Math.round((1000 * covered) / denominator) / 10 : null,
+    chargers,
+    coveredUnfiltered: unfiltered,
+  };
+}
+
+export function coverageByCountryMasks(
+  meta: CoverageMeta,
+  mask: MaskData,
+  filter: CoverageFilter,
+): CoverageCountryRow[] {
+  const sel = selectedBits(mask, filter);
+  const countrySet = filter.countries ? new Set(filter.countries) : null;
+  const { chargers } = matchingChargers(meta, filter);
+
+  const covered = new Map<string, number>();
+  for (let i = 0; i < mask.records.length / 4; i++) {
+    const o = i * 4;
+    const cc = mask.countries[mask.records[o]];
+    if (countrySet && !countrySet.has(cc)) continue;
+    if (!hits(mask.records, i, sel)) continue;
+    covered.set(cc, (covered.get(cc) ?? 0) + 1);
+  }
+
+  return [...covered.entries()]
+    .map(([country, n]) => {
+      const den = meta.companiesByCountry[country] ?? 0;
+      return {
+        country,
+        covered: n,
+        denominator: den,
+        pct: den > 0 ? Math.round((1000 * n) / den) / 10 : null,
+        chargers,
+      };
+    })
+    .sort((a, b) => b.covered - a.covered);
+}

@@ -42,7 +42,7 @@ from depotmon.ingest.osm_eu import ISO3_TO_ISO2
 
 OUT = Path(__file__).resolve().parents[1] / "webapp/public/data"
 
-RADII = [1000, 2500, 5000, 10000, 20000]
+RADII = [5000, 10000, 20000]
 # Four bands, matching the chips in the Dashboard exactly. These used to
 # disagree: the data had three and the UI had four, so band 0 was
 # "50-150 kW" in the data and "<50 kW" on screen. Clicking "<50 kW"
@@ -79,17 +79,21 @@ def main() -> None:
         # Chargers, in a stable order so the index in the binary matches the
         # index in the attribute table.
         cur.execute("""
-            SELECT place_key, operator, tier, hgv_capable, power_kw,
+            SELECT ctid::text AS rid, operator, tier, hgv_capable, power_kw,
                    lon, lat, access_class, country_raw, source
               FROM coverage_chargers
-             ORDER BY place_key
+             ORDER BY ctid::text
         """)
         chargers = cur.fetchall()
         print(f"chargers: {len(chargers):,}")
         if len(chargers) > (1 << 14):
             raise SystemExit("charger index needs more than 14 bits")
 
-        charger_index = {r["place_key"]: i for i, r in enumerate(chargers)}
+        # Keyed by ctid, not place_key: 202 place_keys are shared by two
+        # unrelated chargers (a Norwegian 400 kW site and a Spanish one are both
+        # osm:0198), so a place_key lookup silently gave one of them the
+        # other one's power, tier and access.
+        charger_index = {r["rid"]: i for i, r in enumerate(chargers)}
 
         def country_of(r) -> str:
             cc = (r["country_raw"] or "").strip().upper()
@@ -156,12 +160,12 @@ def main() -> None:
         for radius in RADII:
             cur.execute(
                 """
-                SELECT p.place_key, c.company_id
+                SELECT p.ctid::text AS rid, c.company_id
                   FROM coverage_chargers p
                   JOIN companies c
                     ON ST_DWithin(p.geog, c.geom::geography, %s)
                  WHERE c.geom IS NOT NULL
-                 ORDER BY p.place_key, c.company_id
+                 ORDER BY p.ctid::text, c.company_id
                 """,
                 (radius,),
             )
@@ -169,7 +173,7 @@ def main() -> None:
             packed = bytearray()
             count = 0
             for r in rows:
-                ci = charger_index.get(r["place_key"])
+                ci = charger_index.get(r["rid"])
                 mi = company_index.get(r["company_id"])
                 if ci is None or mi is None:
                     continue

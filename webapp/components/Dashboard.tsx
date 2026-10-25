@@ -17,9 +17,13 @@ import {
 import {
   bandFor,
   computeCoverage,
-  matchingChargerIndexes,
+  computeCoverageMasks,
   coverageByCountry,
+  coverageByCountryMasks,
+  matchingChargerIndexes,
+  parseMask,
   type CoverageMeta,
+  type MaskData,
 } from "@/lib/coverage";
 
 const COUNTRY_NAME: Record<string, string> = {
@@ -94,8 +98,14 @@ const POWER_BANDS = [
   { lo: 350, hi: null, label: "350+ kW" },
 ];
 /** Radii the map can draw, the way the pakketpuntenviewer lets you pick one. */
-/** Coverage radii in metres. The pair matrix ships one file per radius. */
-const RADII = [1000, 2500, 5000, 10000, 20000];
+/** Coverage radii in metres. */
+const RADII = [5000, 10000, 20000, 50000, 100000];
+
+/**
+ * At and above this radius the pair file is replaced by the class-mask index:
+ * 50 km would be 34.5 MB of pairs and 100 km 113.4 MB.
+ */
+const MASK_FROM = 50000;
 
 /** "1 km", "2,5 km", "20 km" — the decimal separator follows the language. */
 function radiusLabel(r: number, lang: string): string {
@@ -137,13 +147,15 @@ export default function Dashboard() {
   const [depots, setDepots] = useState<Depots | null>(null);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
   const [showCoverage, setShowCoverage] = useState(true);
-  const [radiusM, setRadiusM] = useState(1000);
+  const [radiusM, setRadiusM] = useState(5000);
   const [tiers, setTiers] = useState<Tier[]>(ALL_TIERS);
   const [access, setAccess] = useState<AccessClass[]>(ALL_ACCESS);
   const [countries, setCountries] = useState<string[] | null>(null);
   const [hgvOnly, setHgvOnly] = useState(false);
   const [companies, setCompanies] = useState<{ type: "FeatureCollection"; features: unknown[] } | null>(null);
-  const [showCompanies, setShowCompanies] = useState(true);
+  // Off by default: 217k dots at 2.6 px made the map unreadable at country
+  // scale, which is the zoom level the coverage question is asked at.
+  const [showCompanies, setShowCompanies] = useState(false);
   const [bands, setBands] = useState<number[]>(POWER_BANDS.map((_, i) => i));
   // TENtec / AFIR: a second charging source. `vehicleClass` scopes which class
   // of AFIR site is drawn and counted; the OSM depot layer is truck-only.
@@ -161,8 +173,10 @@ export default function Dashboard() {
   // One packed array per radius, kept after the first fetch so moving the
   // slider back and forth costs nothing.
   const [pairData, setPairData] = useState<Uint32Array | null>(null);
+  const [maskData, setMaskData] = useState<MaskData | null>(null);
   const [pairsLoading, setPairsLoading] = useState(false);
   const pairsCache = useRef<Map<number, Uint32Array>>(new Map());
+  const maskCache = useRef<Map<number, MaskData>>(new Map());
   const [focus, setFocus] = useState<{ id: string; lon: number; lat: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAllCountries, setShowAllCountries] = useState(false);
@@ -198,15 +212,29 @@ export default function Dashboard() {
     [lang],
   );
 
+  // 64 MB of points. Fetched only when the dots are switched on, and the dots
+  // start off: at country scale 217k circles read as a smear, not a map.
+  useEffect(() => {
+    if (!showCompanies || companies) return;
+    let cancelled = false;
+    fetch(dataUrl("companies.geojson"))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`companies ${r.status}`))))
+      .then((d) => {
+        if (!cancelled) setCompanies(d);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanies(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showCompanies, companies]);
+
   useEffect(() => {
     fetch(dataUrl("summary.json"))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`summary ${r.status}`))))
       .then((d: Summary) => setSummary(d))
       .catch((e) => setError(String(e)));
-    fetch(dataUrl("companies.geojson"))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`companies ${r.status}`))))
-      .then((d) => setCompanies(d))
-      .catch(() => setCompanies(null));
     fetch(dataUrl("coverage.json"))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`coverage ${r.status}`))))
       .then((d: Coverage) => setCoverage(d))
@@ -246,6 +274,38 @@ export default function Dashboard() {
   // The radius file. 1 km is 0.1 MB and 20 km is 8.3 MB, so this waits for the
   // radius instead of downloading everything up front.
   useEffect(() => {
+    // Long radii come from the class-mask index instead of a pair file.
+    if (radiusM >= MASK_FROM) {
+      const hit = maskCache.current.get(radiusM);
+      if (hit) {
+        setMaskData(hit);
+        setPairData(null);
+        return;
+      }
+      let cancelled = false;
+      setPairsLoading(true);
+      fetch(dataUrl(`coverage_mask_${radiusM}.bin`))
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`mask ${r.status}`))))
+        .then((buf) => {
+          const m = parseMask(buf);
+          maskCache.current.set(radiusM, m);
+          if (!cancelled) {
+            setMaskData(m);
+            setPairData(null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setMaskData(null);
+        })
+        .finally(() => {
+          if (!cancelled) setPairsLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setMaskData(null);
     const cached = pairsCache.current.get(radiusM);
     if (cached) {
       setPairData(cached);
@@ -386,16 +446,20 @@ export default function Dashboard() {
   // The live coverage. Recomputed on every filter change. The largest case is
   // 2.07M pairs at 20 km, which is one pass over a Uint32Array: a few tens of
   // milliseconds, so no debounce is needed.
-  const liveCoverage = useMemo(
-    () => (covMeta && pairData ? computeCoverage(covMeta, pairData, covFilter) : null),
-    [covMeta, pairData, covFilter],
-  );
+  const liveCoverage = useMemo(() => {
+    if (!covMeta) return null;
+    if (maskData) return computeCoverageMasks(covMeta, maskData, covFilter);
+    if (pairData) return computeCoverage(covMeta, pairData, covFilter);
+    return null;
+  }, [covMeta, pairData, maskData, covFilter]);
 
   // Per-country coverage under the same filter, for the fleet table.
-  const countryRows = useMemo(
-    () => (covMeta && pairData ? coverageByCountry(covMeta, pairData, covFilter) : []),
-    [covMeta, pairData, covFilter],
-  );
+  const countryRows = useMemo(() => {
+    if (!covMeta) return [];
+    if (maskData) return coverageByCountryMasks(covMeta, maskData, covFilter);
+    if (pairData) return coverageByCountry(covMeta, pairData, covFilter);
+    return [];
+  }, [covMeta, pairData, maskData, covFilter]);
 
   // The companies still out of range. A hard count from the pair table, not
   // an extrapolation: the old "chargers needed" divided the uncovered

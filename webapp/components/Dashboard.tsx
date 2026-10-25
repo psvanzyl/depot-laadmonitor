@@ -512,7 +512,7 @@ export default function Dashboard() {
 
   /** Back to the unfiltered view: every country, every band, both sources. */
   const resetFilters = () => {
-    setRadiusM(1000);
+    setRadiusM(5000);
     setCountries(null);
     setAccess(ALL_ACCESS);
     setBands(POWER_BANDS.map((_, i) => i));
@@ -578,7 +578,7 @@ export default function Dashboard() {
               {t("reset")}
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {/* The radius is pinned to the top of the sidebar. It sat 2,172 px
               down a 3,533 px column before, below the fleet table, so the one
               setting that changes every number on the page was invisible. */}

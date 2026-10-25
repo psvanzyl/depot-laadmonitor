@@ -928,3 +928,89 @@ blocked GPU.
 
 Keep every `useEffect` at two-space indent inside a component and check for
 four-space `useEffect` lines after any scripted insert.
+
+## 2026-10-25 — the radius is a filter, not a pile of rings (Hermione)
+
+The radius now selects ONE distance. The site draws that radius and nothing
+else, and the coverage is computed against it.
+
+### The bug: four radii drew at once
+
+`coverage.geojson` holds 1,968 sites x 4 radii = **7,872 polygons**. The filter
+that picked one radius was:
+
+```ts
+useEffect(() => {
+  const map = mapRef.current;
+  if (!map || !map.getLayer("coverage")) return;   // <- here
+  map.setFilter("coverage", ["==", ["get", "radiusM"], radiusM]);
+}, [radiusM, coverage]);
+```
+
+The coverage layers are created inside `map.once("load")` whenever the style is
+not ready, which is the normal case on a cold page load. So at the moment this
+effect ran, the layer did not exist, it returned early, and **the filter was
+never applied**. All 7,872 polygons drew. Changing the radius afterwards applied
+the filter, which is why it behaved like a filter that only sometimes worked.
+
+The fix has two parts:
+
+1. The filter expression is now set **when the layers are created**, reading the
+   radius from `radiusRef.current` (a ref updated on every render), so creation
+   can never happen without a filter.
+2. The change effect falls back to `map.once("idle", apply)` instead of
+   returning silently when the layer is not there yet.
+
+### The control moved out of the toggle
+
+The radius picker lived inside the coverage card, next to an on/off switch, so
+the control that decides what the number MEANS was hidden inside a toggle. It is
+now its own section beside Country, and rings are visible by default: a radius
+filter that draws nothing until a second switch is flipped is not a filter.
+
+### Verified exactly, not by counting pixels
+
+`window.__depotMap` now exposes the map instance for QA. Then:
+
+```js
+map.getFilter("coverage")                                  // names the radius
+map.queryRenderedFeatures({layers:["coverage"]}).length     // how many drew
+```
+
+| selected | filter says | rings drawn | panel |
+|----------|-------------|-------------|-------|
+| 500 m | 500 | 0 (sub-pixel at Europe zoom) | 2,747 / 217,484 = 1.3% |
+| 1 km | 1000 | 162 | 7,053 = 3.2% |
+| 2 km | 2000 | 1,968 | 16,974 = 7.8% |
+| 5 km | 5000 | 1,969 | 45,865 = 21.1% |
+
+Rings drawn stays at one radius worth (1,968) and never returns to 7,872. The
+filter value matches the button at every step.
+
+At continental zoom a 500 m ring is smaller than a pixel, so `drawn: 0` there is
+geometry, not a bug; the number still updates and the ring appears on zoom in.
+
+### Two colour collisions, both real
+
+1. **AFIR was the same amber as the coverage fill** (`#f59e0b`), so the EU sites
+   and the coverage circles could not be told apart.
+2. **Every depot tier is amber** (`#b45309`, `#d97706`, `#f59e0b`), so counting
+   amber pixels counted markers, whose number does not change with the radius.
+   A working filter and a broken one measured identical, which is how I wasted a
+   cycle on a test that could not fail.
+
+Palette is now one colour, one meaning:
+
+| layer | colour |
+|-------|--------|
+| depot markers | amber (by tier) |
+| coverage rings | teal `#0d9488` fill, `#0f766e` line |
+| AFIR truck sites | violet `#7c3aed` |
+| AFIR light duty | light blue `#38bdf8` |
+
+### The lesson on measuring a map
+
+A screenshot cannot tell a coverage ring from a marker when they share a colour,
+and `querySelector("canvas")` proves nothing about whether a layer drew. Expose
+the map and ask it: `getFilter` for what the filter is, `queryRenderedFeatures`
+for what is actually on screen. Assert on the quantity the bug changes.

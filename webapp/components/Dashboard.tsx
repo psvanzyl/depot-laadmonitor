@@ -396,6 +396,62 @@ export default function Dashboard() {
 
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         <aside className="order-last lg:order-none lg:w-[400px] lg:shrink-0 lg:min-h-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-visible lg:overflow-y-auto p-4 space-y-4">
+          {/* The radius is pinned to the top of the sidebar. It sat 2,172 px
+              down a 3,533 px column before, below the fleet table, so the one
+              setting that changes every number on the page was invisible. */}
+          <section className="sticky top-0 z-20 -mx-1 px-1 pb-1 bg-slate-50 space-y-2 rounded-xl border border-amber-300 bg-white p-3 shadow-sm">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                {t("radius")}
+              </h2>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-amber-700 tabular-nums">
+                  {radiusM >= 1000 ? `${radiusM / 1000} km` : `${radiusM} m`}
+                </span>
+                <button
+                  onClick={() => setShowCoverage((v) => !v)}
+                  aria-pressed={showCoverage}
+                  title={t("coverageHint")}
+                  className={`px-2 py-0.5 rounded border text-[11px] font-medium transition ${
+                    showCoverage
+                      ? "bg-white border-amber-500 text-amber-700"
+                      : "bg-white border-slate-300 text-slate-400 hover:border-amber-400"
+                  }`}
+                >
+                  {showCoverage ? t("on") : t("off")}
+                </button>
+              </div>
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={RADII.length - 1}
+              step={1}
+              value={Math.max(0, RADII.indexOf(radiusM))}
+              onChange={(e) => setRadiusM(RADII[Number(e.target.value)])}
+              aria-label={t("radius")}
+              className="w-full h-2 cursor-pointer accent-amber-600"
+            />
+
+            <div className="flex justify-between text-[11px] text-slate-500">
+              {RADII.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRadiusM(r)}
+                  aria-pressed={radiusM === r}
+                  className={`tabular-nums transition ${
+                    radiusM === r ? "font-semibold text-amber-700" : "hover:text-amber-600"
+                  }`}
+                >
+                  {r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-[11px] leading-snug text-slate-500">{t("radiusDrawsOne")}</p>
+          </section>
+
           <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-1">
             <div className="text-4xl font-bold text-amber-700 tabular-nums">
               {depots ? nf.format(visible.length) : "…"}
@@ -715,50 +771,6 @@ export default function Dashboard() {
             {vehicleClass !== "hdv" && !afirLdv && (
               <p className="text-[11px] text-slate-400">{t("afirLoading")}</p>
             )}
-          </section>
-
-          {/* Radius: the filter the coverage is computed against, and the only
-              radius drawn on the map. */}
-          <section className="bg-white rounded-xl border border-amber-200 p-4 space-y-2">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                {t("radius")}
-              </h2>
-              <span className="text-[11px] text-slate-400">{t("radiusHint")}</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {RADII.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRadiusM(r)}
-                  aria-pressed={radiusM === r}
-                  title={r >= 1000 ? `${r / 1000} km` : `${r} m`}
-                  className={`px-2.5 py-1 rounded-md border text-xs font-medium tabular-nums transition ${
-                    radiusM === r
-                      ? "bg-amber-600 border-amber-600 text-white"
-                      : "bg-white border-slate-300 text-slate-500 hover:border-amber-400"
-                  }`}
-                >
-                  {r >= 1000 ? `${r / 1000} km` : `${r} m`}
-                </button>
-              ))}
-              <button
-                onClick={() => setShowCoverage((v) => !v)}
-                aria-pressed={showCoverage}
-                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition ${
-                  showCoverage
-                    ? "bg-white border-amber-500 text-amber-700"
-                    : "bg-white border-slate-300 text-slate-400 hover:border-amber-400"
-                }`}
-                title={t("coverageHint")}
-              >
-                {showCoverage ? t("on") : t("off")}
-              </button>
-            </div>
-            <p className="text-[11px] leading-snug text-slate-500">
-              {nf.format(radiusM >= 1000 ? radiusM / 1000 : radiusM)}
-              {radiusM >= 1000 ? " km" : " m"} · {t("radiusDrawsOne")}
-            </p>
           </section>
 
           {/* Country filter. */}

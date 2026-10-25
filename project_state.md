@@ -1014,3 +1014,77 @@ A screenshot cannot tell a coverage ring from a marker when they share a colour,
 and `querySelector("canvas")` proves nothing about whether a layer drew. Expose
 the map and ask it: `getFilter` for what the filter is, `queryRenderedFeatures`
 for what is actually on screen. Assert on the quantity the bug changes.
+
+## 2026-10-25 — the radius slider, and the coverage now counts AFIR (Hermione)
+
+### The radius control was invisible, not broken
+
+It worked. It sat at **2,172 px** down a **3,533 px** sidebar in a **900 px**
+viewport, below the fleet table, so the one setting that changes every number on
+the page could not be seen without scrolling past two thousand pixels.
+
+It is now the first element in the sidebar and `sticky top-0`, so it stays pinned
+while the column scrolls, and it is a slider: a native `input[type=range]` over
+the four stops with the stops labelled and clickable underneath.
+
+Lesson: a control nobody can find is a control that does not exist. Measure the
+bounding box, not the DOM presence. "It is in the DOM" and "it is on the screen"
+are different claims.
+
+### The coverage now includes the AFIR layer
+
+`coverage_chargers` (migration 009) is `premises_scores` UNION the AFIR HDV
+rows. Only HDV: a 22 kW car post does not charge a truck, and counting light
+duty here would inflate truck coverage with infrastructure that cannot serve the
+fleet.
+
+| radius | before | after |
+|--------|--------|-------|
+| 500 m | 2,747 (1.3%) | **6,882 (3.0%)** |
+| 1 km | 7,053 (3.2%) | 17,028 (7.4%) |
+| 2 km | 16,974 (7.8%) | 38,541 (16.7%) |
+| 5 km | 45,865 (21.1%) | 83,051 (36.0%) |
+| DE only, 500 m | 965 (1.7%) | 3,255 (5.7%) |
+
+Pairs 90,559 -> 258,946. Chargers 3,048 -> 9,021. The file is 4.9 MB.
+
+### It must be a TABLE, not a view
+
+As a view, `coverage_chargers` recomputed the 300 m country subquery for the OSM
+rows on **every reference**, and the 5 km pair join ran that per candidate row:
+4 minutes 41 seconds and still going for 9,266 chargers.
+
+Materialised as a table with a generated `geog geography` column and a GIST
+index, and with the pair query using `p.geog` instead of rebuilding
+`ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)::geography` per row, the same
+export takes **2.5 seconds**.
+
+### A jump that size has to be attributable
+
+Each charger now carries a source flag (0 = own, 1 = AFIR) and the coverage card
+has two chips. Live, at 500 m:
+
+| sources | companies covered | chargers |
+|---------|-------------------|----------|
+| both | 6,882 (3.0%) | 9,021 |
+| own only | 2,998 (1.3%) | 2,936 |
+| AFIR only | 4,856 (2.1%) | 6,085 |
+
+2,998 + 4,856 = 7,854, which is **more** than 6,882. That is correct and not a
+bug: the count is DISTINCT over companies, and 972 companies are within range of
+both an own site and an AFIR site, so they count once in the total. Never expect
+the two halves to add up when the metric is a distinct count.
+
+### Known limitation: the rings still mark only our own sites
+
+`coverage.geojson` has 1,968 sites x 4 radii and is generated from
+`premises_scores`, so the teal rings mark our own scored sites while the count
+includes the 6,085 AFIR sites. AFIR is still visible on the map as violet dots,
+so nothing counted is invisible, but the rings and the number are not the same
+set.
+
+Do not "fix" this by pointing the ring exporter at `coverage_chargers`: 9,021
+sites x 4 radii is about 36,000 polygons, roughly 32 MB, and the file is fetched
+eagerly on every page load. The 7 MB it already ships is too much. The fix is
+one file per radius, fetched only for the selected radius and only when rings
+are on.

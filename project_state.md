@@ -792,3 +792,139 @@ Maastricht NL, Basel CH, Salzburg AT, Praha CZ. 12/12 correct.
   reach a company, so the default view said 1,077 chargers when 3,048 pass the
   filter. It is counted over the charger table now. The fleet table had the
   same defect (Germany 351 vs 647) and is fixed the same way.
+
+## 2026-10-25 — TENtec / AFIR as a second charging source (Hermione)
+
+The European Commission publishes the Member State AFIR reporting data for
+alternative-fuels infrastructure, and it is the only Europe-wide source that
+carries the TEN-T core-network flag, the corridor name, the operator and the
+per-connector power. It is now ingested as a second source beside the OSM and
+Depotcharge layers.
+
+### The endpoint, and how it was found
+
+    https://tentec.transport.ec.europa.eu/api/public/gis/
+        Alternative_Fuels/MapServer/4/query
+
+No token, no key. It was not documented anywhere: the layer URLs inside the
+Angular bundle are relative (`/gis/Alternative_Fuels/MapServer/4`), so the host
+that serves them only appears in a network log. Loading the page in a headless
+browser on CT141 and recording requests matching `/api/` found it in one pass.
+
+Two traps while probing by hand:
+
+- The app is mounted at `/tentec2` and the server adds that prefix itself, so
+  asking for `/tentec2/gis/...` becomes `/tentec2/tentec2/gis/...`. Ask without
+  the prefix.
+- `/api/...` answers `HTTP 400 "The REST service can only be accessed
+  programmatically."` without `Accept: application/json`. It is a header gate,
+  not auth.
+
+The site is **IPv6-only from the Hermes host** and every request there fails
+with no route. CT141 reaches it. All ingest runs on CT141.
+
+### What the layer has, and the four traps in it
+
+Layer 4 is 1,280,290 connector rows across 24 fields.
+
+1. **`CONNECTOR_POWER` is in WATTS.** A row reads `11000` for an 11 kW Type 2
+   connector. Filtering on `>= 150` returns nothing; it must be `>= 150000`.
+2. **Rows are per connector, not per site.** One charging pool repeats with
+   identical attributes. Rows are aggregated on `LOCATION_UNIQUE_ID`, which
+   took 1,280,290 rows down to 349,953 locations.
+3. **45% of rows carry no `COUNTRY_CODE`** (581,708 of 1,280,290). A country
+   filter silently drops them. The polygon resolver fills the gap from the
+   coordinates, never from a query box: the box-country bug already cost this
+   project 36,881 companies.
+4. **There is no availability data.** All 24 fields were read; not one is a
+   status, occupancy, free/busy or realtime field. See below.
+
+### Paging: resultOffset is O(offset), keyset is flat
+
+Measured on this service, one page of 2,000 rows:
+
+| request | time |
+|---------|------|
+| `resultOffset=0` | 0.5 s |
+| `resultOffset=200,000` | 6.3 s |
+| `resultOffset=800,000` | 24.0 s |
+| `resultOffset=1,278,000` | 23.0 s |
+| `OBJECTID > <last>`, start at 0 | 0.9 - 4.3 s |
+| `OBJECTID > <last>`, start 800,000 deep | 3.7 s |
+
+So the first ingest attempt was spending almost all its time asking the service
+to skip rows it had already read, and two runs timed out before writing
+anything. Keyset paging (`where ... AND OBJECTID > {last}`, ordered by
+`OBJECTID`) is flat at any depth, and the full layer then completed in about
+twelve minutes with three worker threads over OBJECTID ranges.
+
+`count()` and the min/max statistics call each cost 40-45 s. They are worth one
+call at the start and not one per page.
+
+### A dropped socket is not a URLError
+
+The service closes a concurrent connection with
+`http.client.RemoteDisconnected: Remote end closed connection without response`.
+That is an `OSError`, **not** a `URLError`, so a retry list of
+`(URLError, TimeoutError, JSONDecodeError)` let it escape and killed the run
+after a convincing-looking stack trace. Catch `OSError` and
+`HTTPException` and back off.
+
+### Operability: confirmed absent, and said so
+
+The request was plug free/busy. TENtec does not have it, and no free EU-wide
+source does: live occupancy needs an OCPI/OICP feed per operator or a commercial
+hub such as Gireve or Hubject.
+
+Rather than leave a blank cell that reads as "free", `afir_locations` carries
+`status`, `status_at` and `status_source` columns that stay NULL, and the UI
+prints "Niet beschikbaar / Not available" with the reason underneath. A
+real-time feed can fill those columns without a migration.
+
+### The vehicle-class filter
+
+Light duty is loaded, not skipped, and the site can filter it out.
+
+    HDV   6,085   (2,234 on the TEN-T core network, up to 1,200 kW)
+    LDV 343,868   (66,327 on core, up to 345 kW)
+    total 349,953 across 44 countries, zero without a country
+
+Classification: HDV when the location can physically charge a truck, meaning
+350 kW or more, or an MCS connector. Everything else is LDV. A 400 kW CCS bay
+also serves cars, but a car does not need a truck bay, so the classifier errs
+towards HDV: the cost of that error is one extra site in the truck view, and
+the cost of the opposite error is a missing truck charger.
+
+LDV is **95% of the data**, so it does not load with the page:
+
+| file | size | when |
+|------|------|------|
+| `afir_hdv.geojson` | 2.3 MB | with the page |
+| `afir_ldv.json` | 8.5 MB | only when the filter asks for cars |
+| `afir_summary.json` | 3.3 KB | with the page |
+
+The LDV file is compact flat arrays `[lon, lat, kw, countryIndex, connectors]`,
+not GeoJSON, because GeoJSON repeats every property name once per feature. The
+browser turns the array into a GeoJSON source in one pass when the toggle flips.
+A truck map that downloads a quarter of a million car chargers before first
+paint is a truck map nobody waits for.
+
+Verified live: 6,085 + 343,868 = 349,953 exactly, and the map goes from 14 blue
+pixels to 11,947 when the car layer is switched on, so the toggle changes the
+map and not only the numbers.
+
+### React error #321 is a nesting bug, not a WebGL bug
+
+The AFIR `useEffect` was inserted at the anchor `const map = mapRef.current;`,
+which sits **inside** the depots effect callback. A hook registered inside
+another hook body throws React #321 (invalid hook call), the map component
+threw, and `MapBoundary` replaced the whole map with its generic message
+"The map could not start. WebGL is not available in this browser".
+
+That message sent me to the GPU. The browser console said otherwise, and so did
+the QA harness: `canvas: null` **and** `tileRequests: 0`, where a working map
+had reported 37 tiles. Zero tile requests is a dead component, not a slow or
+blocked GPU.
+
+Keep every `useEffect` at two-space indent inside a component and check for
+four-space `useEffect` lines after any scripted insert.

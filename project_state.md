@@ -558,9 +558,13 @@ all indexed. The exporter resolves the country for every feature from the
 signals, then falls back to the polygon lookup.
 
 ### Live channels
-- `https://depot.laserraptorai.duckdns.org/` — the public URL (Coolify app
-  `zwchjhlpi9ddx5b9az9pppmc`, project `fqu2qsk1js5phkbwpjw5wk81`).
-- `https://depot.home.arpa/` — the internal URL (Caddy on CT106).
+- `https://wego.laserraptor.eu/projects/depotcharge` — the public URL since
+  2026-11-07 (Wego consulting brand). Coolify app `zwchjhlpi9ddx5b9az9pppmc`,
+  project `fqu2qsk1js5phkbwpjw5wk81`, served as a sub-path (`basePath`).
+- `https://depot.laserraptorai.duckdns.org/projects/depotcharge` — same app, old
+  host. Its root now 301-redirects to the new URL (Traefik file route on CT310,
+  `/data/coolify/proxy/dynamic/depot-legacy-redirect.yml`).
+- `https://depot.home.arpa/` — the internal URL (Caddy on CT106), root, no basePath.
 - The map now opens on **Europe**, not the Netherlands.
 
 ### Tests
@@ -1226,3 +1230,28 @@ Verified on the live site, all five stops equal the decoded binaries exactly:
 
 Also in this pass: the side panel went from 400 px pinned to the window edge to
 272 px inside the family shell, so it lines up with the logo and the intro band.
+
+## 2026-11-07 — moved to wego.laserraptor.eu/projects/depotcharge
+
+Boss: the map is now hosted under the Wego consulting brand, self-hosted.
+
+- Coolify app `zwchjhlpi9ddx5b9az9pppmc` now carries TWO sub-path domains, both
+  with the path (a single-host value silently produces a Host(sslip.io) label):
+  `https://wego.laserraptor.eu/projects/depotcharge`,
+  `https://depot.laserraptorai.duckdns.org/projects/depotcharge`.
+- `webapp/Dockerfile` takes `ARG NEXT_PUBLIC_BASE_PATH` and passes it to both the
+  build and run stages. Empty default keeps root deployments byte-identical
+  (depot.home.arpa:8020 still serves at `/`).
+- Coolify env var: `NEXT_PUBLIC_BASE_PATH=/projects/depotcharge`, build-time
+  (this API version spells the flag `is_buildtime`, not `is_build_time`).
+- All data reads already ran through `dataUrl()` in Dashboard.tsx, so no app
+  code changed. No root-absolute `href="/..."`/`src="/..."` existed.
+- Coolify still injects a `stripprefix` middleware for sub-path domains. Left
+  in place: the observed routing is correct (prefixed HTML, prefixed assets,
+  prefixed data 200, unprefixed data 404 from the Wego app). Do not assume it is
+  harmless — re-test this matrix after any Coolify upgrade.
+- Legacy redirect: CT310 `/data/coolify/proxy/dynamic/depot-legacy-redirect.yml`
+  (priority 10) sends the old host's root to the new URL with 301. The Coolify
+  router keeps `/projects/depotcharge` on the old host.
+- QA: `scripts/qa_map.py --url https://wego.laserraptor.eu/projects/depotcharge`
+  passed — canvas up, 24 tile requests, siteCount 3.299, no overflow.

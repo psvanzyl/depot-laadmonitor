@@ -7,7 +7,7 @@ import subprocess
 import time
 import urllib.request
 
-URL = "https://depot.laserraptorai.duckdns.org/?lang=nl"
+URL = "https://wego.laserraptor.eu/projects/depotcharge?lang=nl"
 PORT = 9225
 CHROME = [
     "chromium", "--no-sandbox", "--disable-dev-shm-usage", "--disable-quic",

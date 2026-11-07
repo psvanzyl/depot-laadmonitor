@@ -19,7 +19,7 @@ import sys
 import time
 import urllib.request
 
-URL = "https://depot.laserraptorai.duckdns.org/?lang=nl"
+URL = "https://wego.laserraptor.eu/projects/depotcharge?lang=nl"
 PORT = 9224
 
 # SELECT count(DISTINCT company_id) FROM coverage_chargers p JOIN companies c

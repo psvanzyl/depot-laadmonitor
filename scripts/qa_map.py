@@ -24,7 +24,7 @@ import sys
 import time
 import urllib.request
 
-URL = "https://depot.laserraptorai.duckdns.org/"
+URL = "https://wego.laserraptor.eu/projects/depotcharge"
 OUT = pathlib.Path("/root/projects/depot-laadmonitor/scratch/qa")
 PORT = 9223
 

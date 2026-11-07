@@ -164,8 +164,13 @@ def main() -> int:
             header = HEADER.pack(
                 MAGIC, VERSION, radius, n_classes, len(rows), len(countries), WORDS
             )
+            # Pad to a 4-byte boundary so the browser can wrap the record
+            # array instead of copying 3.5 MB. Without this the records start
+            # at byte 391 and `new Uint32Array(buf, 391)` is a TypeError.
+            head = header + bytes(class_block) + country_block
+            head += b"\0" * ((4 - (len(head) % 4)) % 4)
             path = OUT / f"coverage_mask_{radius}.bin"
-            blob = header + bytes(class_block) + country_block + bytes(payload)
+            blob = head + bytes(payload)
             path.write_bytes(blob)
             print(f"  {path.name:26} {len(rows):>7,} companies  {len(blob):>10,} bytes")
 

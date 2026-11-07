@@ -1,53 +1,53 @@
 {
-  "generatedAt": "2026-10-25T05:32:43+00:00",
+  "generatedAt": "2026-11-07T15:39:17+00:00",
   "sites": {
-    "total": 3265,
-    "scored": 3440,
+    "total": 3299,
+    "scored": 3474,
     "withoutCoords": 175,
     "byTier": {
-      "A": 1498,
-      "B": 433,
-      "C": 1334
+      "A": 1520,
+      "B": 438,
+      "C": 1341
     },
-    "hgv": 2024,
+    "hgv": 2057,
     "byAccess": {
-      "public": 1816,
+      "public": 1845,
       "semi_public": 538,
-      "private": 186,
-      "unknown": 725
+      "private": 187,
+      "unknown": 729
     }
   },
   "power": {
-    "totalKw": 835393.9,
-    "sitesWithKw": 3124
+    "totalKw": 846918.9,
+    "sitesWithKw": 3156
   },
   "byProvince": {
-    "Onbekend": 2701,
-    "Zuid-Holland": 103,
-    "Noord-Holland": 86,
-    "Noord-Brabant": 83,
-    "Gelderland": 62,
-    "Utrecht": 54,
-    "Overijssel": 53,
-    "Limburg": 40,
-    "Drenthe": 21,
-    "Fryslân": 19,
+    "Onbekend": 2732,
+    "Zuid-Holland": 100,
+    "Noord-Holland": 87,
+    "Noord-Brabant": 82,
+    "Gelderland": 65,
+    "Utrecht": 56,
+    "Overijssel": 54,
+    "Limburg": 41,
+    "Fryslân": 21,
+    "Drenthe": 18,
     "Groningen": 16,
     "Flevoland": 14,
     "Zeeland": 13
   },
   "byChannel": {
-    "etrucker": 1472,
-    "osm": 1291,
+    "etrucker": 1503,
+    "osm": 1294,
     "depotcharge": 209,
-    "chargepoint": 175,
-    "news": 88,
+    "chargepoint": 172,
+    "news": 91,
     "permit": 51
   },
   "precision": {
-    "premises": 3181,
-    "address": 75,
-    "signal": 9
+    "premises": 3212,
+    "signal": 10,
+    "address": 77
   },
   "sources": {
     "permits": "KOOP SRU 2.0 — Officiële Bekendmakingen (gemeente-/provinciaal blad, Staatscourant)",
